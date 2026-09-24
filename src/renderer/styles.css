@@ -61,6 +61,21 @@ html, body {
   transform-origin: center bottom;
 }
 
+/* Subtle, brief eyelid blink overlay: perfectly aligned with base character */
+.blink-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+#pico-container.blinking .blink-overlay {
+  opacity: 1;
+  visibility: visible;
+}
+
 /* Pico remains completely still and stable while standing idle */
 .pico-character.idle {
   animation: none;

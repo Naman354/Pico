@@ -4,9 +4,105 @@ const bubbleContainer = document.getElementById('bubble-container');
 const picoInput = document.getElementById('pico-input');
 const sendBtn = document.getElementById('send-btn');
 const picoCharacter = document.getElementById('pico-character');
+const picoBlink = document.getElementById('pico-blink');
 
 let isBubbleOpen = false;
 let animationTimeout = null;
+
+// Occasional Natural Idle Blink Controller
+const IdleBlink = {
+  timer: null,
+  durationTimer: null,
+  isBlinking: false,
+  isPaused: false,
+
+  start() {
+    this.scheduleNext();
+  },
+
+  scheduleNext() {
+    this.clearTimer();
+    // Natural human irregular intervals: roughly 2.5s to 5.8s
+    const intervalMs = Math.floor(2500 + Math.random() * 3300);
+    this.timer = setTimeout(() => {
+      this.blink();
+    }, intervalMs);
+  },
+
+  blink() {
+    if (this.isPaused || this.isBusy()) {
+      this.scheduleNext();
+      return;
+    }
+
+    this.isBlinking = true;
+    picoContainer.classList.add('blinking');
+
+    // Subtle, brief blink: normal human blink is ~120-140ms
+    const blinkDurationMs = 130;
+    this.durationTimer = setTimeout(() => {
+      this.endBlink();
+
+      // Occasional natural double-blink (15% probability)
+      if (Math.random() < 0.15 && !this.isBusy() && !this.isPaused) {
+        setTimeout(() => {
+          if (!this.isBusy() && !this.isPaused) {
+            picoContainer.classList.add('blinking');
+            setTimeout(() => {
+              this.endBlink();
+              this.scheduleNext();
+            }, 110);
+          } else {
+            this.scheduleNext();
+          }
+        }, 110);
+      } else {
+        this.scheduleNext();
+      }
+    }, blinkDurationMs);
+  },
+
+  endBlink() {
+    this.isBlinking = false;
+    picoContainer.classList.remove('blinking');
+    if (this.durationTimer) {
+      clearTimeout(this.durationTimer);
+      this.durationTimer = null;
+    }
+  },
+
+  isBusy() {
+    if (!picoCharacter) return false;
+    return (
+      picoCharacter.classList.contains('reacting') ||
+      picoCharacter.classList.contains('acknowledging') ||
+      isBubbleOpen
+    );
+  },
+
+  // Immediately pause and cancel any active/pending blink during higher priority animations
+  pauseAndOverride() {
+    this.isPaused = true;
+    this.endBlink();
+    this.clearTimer();
+  },
+
+  resume() {
+    this.isPaused = false;
+    this.endBlink();
+    this.scheduleNext();
+  },
+
+  clearTimer() {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+  }
+};
+
+// Expose on window for automated verification and test coverage
+window.IdleBlink = IdleBlink;
 
 // Character Animation Controller (Clean visual isolation)
 const CharacterActions = {
@@ -23,6 +119,9 @@ const CharacterActions = {
   },
 
   playAnimation(className, durationMs) {
+    // Blinking pauses/overrides while high-priority animations play
+    IdleBlink.pauseAndOverride();
+
     if (animationTimeout) {
       clearTimeout(animationTimeout);
       animationTimeout = null;
@@ -34,6 +133,9 @@ const CharacterActions = {
 
     animationTimeout = setTimeout(() => {
       picoCharacter.classList.remove(className);
+      if (!isBubbleOpen) {
+        IdleBlink.resume();
+      }
     }, durationMs);
   }
 };
@@ -62,6 +164,9 @@ function closeBubble() {
 
   // Re-enable click-through for desktop transparent areas
   window.picoAPI?.setIgnoreMouseEvents(true, { forward: true });
+
+  // Resume idle blinking
+  IdleBlink.resume();
 }
 
 // Toggle bubble on clicking Pico
@@ -145,3 +250,6 @@ window.addEventListener('mousemove', (e) => {
     window.picoAPI?.setIgnoreMouseEvents(true, { forward: true });
   }
 });
+
+// Initialize natural idle blink loop
+IdleBlink.start();
