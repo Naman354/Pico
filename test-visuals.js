@@ -49,20 +49,20 @@ app.whenReady().then(async () => {
       const metrics = await win.webContents.executeJavaScript(`
         (() => {
           const container = document.getElementById('pico-container');
-          const svg = document.querySelector('.pico-svg');
+          const char = document.getElementById('pico-character');
           const stage = document.getElementById('desktop-stage');
           const ackFlash = document.getElementById('ack-flash');
           const bubble = document.getElementById('bubble-container');
           
           const cRect = container.getBoundingClientRect();
-          const sRect = svg.getBoundingClientRect();
+          const charRect = char.getBoundingClientRect();
           const stageRect = stage.getBoundingClientRect();
 
           return {
             containerHeight: cRect.height,
             containerWidth: cRect.width,
-            svgHeight: sRect.height,
-            svgWidth: sRect.width,
+            charHeight: charRect.height,
+            charWidth: charRect.width,
             containerBottom: cRect.bottom,
             windowHeight: window.innerHeight,
             gapToWindowBottom: window.innerHeight - cRect.bottom,
@@ -74,10 +74,10 @@ app.whenReady().then(async () => {
       console.log('Metrics Check:', JSON.stringify(metrics, null, 2));
 
       // Assertions
-      if (metrics.svgHeight >= 50 && metrics.svgHeight <= 65) {
-        console.log(`PASS: Pico visible height is ${metrics.svgHeight}px (strictly within 50-65px).`);
+      if (metrics.charHeight >= 50 && metrics.charHeight <= 65) {
+        console.log(`PASS: Pico visible height is ${metrics.charHeight}px (strictly within 50-65px).`);
       } else {
-        console.error(`FAIL: Pico height is ${metrics.svgHeight}px`);
+        console.error(`FAIL: Pico height is ${metrics.charHeight}px`);
       }
 
       if (metrics.gapToWindowBottom <= 1) {

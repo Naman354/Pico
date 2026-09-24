@@ -34,10 +34,10 @@ html, body {
   pointer-events: none; /* transparent clicks pass through */
 }
 
-/* Pico Character Container (50-65px target: exactly 60px visible height) */
+/* Pico Character Container (strictly ~60px visible height at desktop scale) */
 #pico-container {
   position: relative;
-  width: 48px;
+  width: 38px;
   height: 60px;
   cursor: pointer;
   pointer-events: auto;
@@ -47,59 +47,27 @@ html, body {
 }
 
 #pico-container:hover {
-  transform: translateY(-2px);
-}
-
-#pico-container:active {
-  transform: translateY(1px) scale(0.97);
+  /* Feet remain firmly planted on the surface */
 }
 
 .pico-character {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-
-.pico-svg {
-  width: 48px;
+  width: 38px;
   height: 60px;
   display: block;
+  object-fit: contain;
+  image-rendering: -webkit-optimize-contrast;
+  user-drag: none;
+  -webkit-user-drag: none;
+  transform-origin: center bottom;
 }
 
-/* Subtle Idle Breathing Animation */
-.pico-rig {
-  transform-origin: 40px 100px;
-  animation: pico-breathe 3.6s ease-in-out infinite;
-}
-
-@keyframes pico-breathe {
-  0%, 100% {
-    transform: scaleY(1) translateY(0);
-  }
-  50% {
-    transform: scaleY(1.02) translateY(-0.6px);
-  }
-}
-
-/* Natural Eyelid Blinking */
-.left-eye, .right-eye {
-  transform-origin: center;
-  animation: pico-blink 4.8s infinite;
-}
-
-@keyframes pico-blink {
-  0%, 94%, 98%, 100% {
-    transform: scaleY(1);
-  }
-  96% {
-    transform: scaleY(0.08);
-  }
+/* Pico remains completely still and stable while standing idle */
+.pico-character.idle {
+  animation: none;
 }
 
 /* Character Reaction Animation (Playful bounce on click) */
-.pico-character.reacting .pico-rig {
+.pico-character.reacting {
   animation: pico-bounce 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
 }
 
@@ -118,8 +86,8 @@ html, body {
   }
 }
 
-/* Acknowledgement Animation (Subtle character nod + smile, replacing text) */
-.pico-character.acknowledging .pico-head {
+/* Acknowledgement Animation (Subtle character nod + smile bob, replacing text) */
+.pico-character.acknowledging {
   animation: pico-nod 0.65s cubic-bezier(0.25, 1, 0.5, 1) !important;
 }
 
@@ -128,67 +96,14 @@ html, body {
     transform: translateY(0) rotate(0deg);
   }
   30% {
-    transform: translateY(3px) rotate(-1deg);
+    transform: translateY(2.5px) rotate(-1.5deg);
   }
   65% {
-    transform: translateY(-1.5px) rotate(0.5deg);
+    transform: translateY(-1px) rotate(1deg);
   }
   100% {
     transform: translateY(0) rotate(0deg);
   }
-}
-
-.pico-character.acknowledging .pico-rig {
-  animation: pico-ack-bob 0.65s ease-out !important;
-}
-
-@keyframes pico-ack-bob {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  30% {
-    transform: translateY(1px);
-  }
-}
-
-/* Expression Switching */
-.pico-eyes-happy {
-  display: none;
-}
-
-.pico-mouth-happy {
-  display: none;
-}
-
-/* When in Happy, Reacting, or Acknowledging State */
-.pico-character.happy .pico-eyes-idle,
-.pico-character.reacting .pico-eyes-idle,
-.pico-character.acknowledging .pico-eyes-idle {
-  display: none;
-}
-
-.pico-character.happy .pico-eyes-happy,
-.pico-character.reacting .pico-eyes-happy,
-.pico-character.acknowledging .pico-eyes-happy {
-  display: block;
-}
-
-.pico-character.happy .pico-mouth-idle,
-.pico-character.reacting .pico-mouth-idle,
-.pico-character.acknowledging .pico-mouth-idle {
-  display: none;
-}
-
-.pico-character.happy .pico-mouth-happy,
-.pico-character.reacting .pico-mouth-happy,
-.pico-character.acknowledging .pico-mouth-happy {
-  display: block;
-}
-
-.pico-character.reacting .pico-blush,
-.pico-character.acknowledging .pico-blush {
-  opacity: 0.9;
-  transition: opacity 0.2s ease;
 }
 
 /* Attached Speech Input Bubble */

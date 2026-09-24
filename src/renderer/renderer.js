@@ -1,14 +1,9 @@
-import { renderPicoCharacter } from './pico-svg.js';
-
 // DOM Elements
 const picoContainer = document.getElementById('pico-container');
 const bubbleContainer = document.getElementById('bubble-container');
 const picoInput = document.getElementById('pico-input');
 const sendBtn = document.getElementById('send-btn');
-
-// Render Pico Character
-picoContainer.innerHTML = renderPicoCharacter();
-const picoCharacter = document.querySelector('.pico-character');
+const picoCharacter = document.getElementById('pico-character');
 
 let isBubbleOpen = false;
 let animationTimeout = null;

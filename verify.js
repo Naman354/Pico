@@ -44,14 +44,14 @@ app.whenReady().then(async () => {
       const metrics = await win.webContents.executeJavaScript(`
         (() => {
           const container = document.getElementById('pico-container');
-          const svg = document.querySelector('.pico-svg');
+          const char = document.getElementById('pico-character');
           const ackFlash = document.getElementById('ack-flash');
           const cRect = container.getBoundingClientRect();
-          const sRect = svg.getBoundingClientRect();
+          const charRect = char.getBoundingClientRect();
 
           return {
-            svgHeight: sRect.height,
-            svgWidth: sRect.width,
+            charHeight: charRect.height,
+            charWidth: charRect.width,
             gapToWindowBottom: window.innerHeight - cRect.bottom,
             hasAckTextElement: !!ackFlash
           };
@@ -61,10 +61,10 @@ app.whenReady().then(async () => {
       console.log('Metrics:', JSON.stringify(metrics, null, 2));
 
       // 1. Height check (50-65px)
-      if (metrics.svgHeight >= 50 && metrics.svgHeight <= 65) {
-        console.log('PASS: Pico height is ' + metrics.svgHeight + 'px (target: 50-65px).');
+      if (metrics.charHeight >= 50 && metrics.charHeight <= 65) {
+        console.log('PASS: Pico height is ' + metrics.charHeight + 'px (target: 50-65px).');
       } else {
-        console.error('FAIL: Pico height out of target bounds: ' + metrics.svgHeight);
+        console.error('FAIL: Pico height out of target bounds: ' + metrics.charHeight);
       }
 
       // 2. Taskbar baseline check (0px gap)
@@ -81,7 +81,53 @@ app.whenReady().then(async () => {
         console.error('FAIL: Found text acknowledgement.');
       }
 
-      // 4. Click to open
+      // 4. Idle Stillness Check (No continuous idle animation; feet firmly planted)
+      const idleAnimationCheck = await win.webContents.executeJavaScript(`
+        (() => {
+          const char = document.getElementById('pico-character');
+          const style = window.getComputedStyle(char);
+          const rect1 = char.getBoundingClientRect();
+          return {
+            animationName: style.animationName,
+            top: rect1.top,
+            bottom: rect1.bottom,
+            height: rect1.height
+          };
+        })()
+      `);
+
+      if (idleAnimationCheck.animationName === 'none') {
+        console.log('PASS: Idle animation is explicitly "none" (continuous breathing removed).');
+      } else {
+        console.error('FAIL: Idle animation is still active: ' + idleAnimationCheck.animationName);
+      }
+
+      // Wait 1.2s to ensure position is 100% stationary over time
+      await new Promise(r => setTimeout(r, 1200));
+
+      const idleStabilityCheck = await win.webContents.executeJavaScript(`
+        (() => {
+          const char = document.getElementById('pico-character');
+          const rect2 = char.getBoundingClientRect();
+          return {
+            top: rect2.top,
+            bottom: rect2.bottom,
+            height: rect2.height
+          };
+        })()
+      `);
+
+      const dTop = Math.abs(idleStabilityCheck.top - idleAnimationCheck.top);
+      const dBottom = Math.abs(idleStabilityCheck.bottom - idleAnimationCheck.bottom);
+      const dHeight = Math.abs(idleStabilityCheck.height - idleAnimationCheck.height);
+
+      if (dTop === 0 && dBottom === 0 && dHeight === 0) {
+        console.log('PASS: Pico body position is completely stable (0px deviation over time). Feet remain firmly planted.');
+      } else {
+        console.error('FAIL: Pico moved during idle! dTop=' + dTop + ', dBottom=' + dBottom);
+      }
+
+      // 5. Click to open
       await win.webContents.executeJavaScript(`
         document.getElementById('pico-container').click();
       `);

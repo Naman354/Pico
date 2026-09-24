@@ -6,36 +6,48 @@ app.commandLine.appendSwitch('enable-transparent-visuals');
 let mainWindow = null;
 
 /**
- * Taskbar Surface World Baseline:
- * Calculates the exact top ledge of the visible taskbar on Windows.
- * This establishes the permanent physical surface for Pico's feet.
+ * TaskbarWorldSurface:
+ * Reusable world-coordinate / physical surface abstraction.
+ * Treats the visible Windows taskbar as a real physical ledge.
+ * Establishes the exact screen baseline for Pico's feet.
  */
-function getTaskbarSurface() {
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { x: workX, y: workY, width: workWidth, height: workHeight } = primaryDisplay.workArea;
+class TaskbarWorldSurface {
+  static getSurface() {
+    const display = screen.getPrimaryDisplay();
+    const { bounds, workArea } = display;
 
-  // On Windows, workArea represents desktop space above/bounded by the taskbar.
-  // The top edge of a bottom taskbar is at workY + workHeight.
-  const surfaceY = workY + workHeight;
+    // Detect taskbar top edge in desktop screen coordinates
+    let ledgeY = workArea.y + workArea.height; // Standard bottom taskbar ledge
+    let isBottom = true;
 
-  return {
-    surfaceY,
-    workX,
-    workY,
-    workWidth,
-    workHeight
-  };
+    if (workArea.y > bounds.y) {
+      // Top taskbar fallback
+      ledgeY = workArea.y;
+      isBottom = false;
+    }
+
+    return {
+      ledgeY,
+      isBottom,
+      leftBound: workArea.x,
+      rightBound: workArea.x + workArea.width,
+      bounds,
+      workArea,
+      // Default resting X coordinate near the system tray on the taskbar
+      defaultX: workArea.x + workArea.width - 320
+    };
+  }
 }
 
 function createWindow() {
-  const surface = getTaskbarSurface();
+  const surface = TaskbarWorldSurface.getSurface();
 
-  const windowWidth = 300;
+  const windowWidth = 290;
   const windowHeight = 85;
 
-  // Window's bottom sits precisely on the taskbar ledge (surfaceY)
-  const posX = surface.workX + surface.workWidth - windowWidth - 40;
-  const posY = surface.surfaceY - windowHeight;
+  // Position window so its bottom edge rests precisely on the taskbar ledge
+  const posX = surface.defaultX;
+  const posY = surface.ledgeY - windowHeight;
 
   mainWindow = new BrowserWindow({
     width: windowWidth,
@@ -56,6 +68,9 @@ function createWindow() {
       devTools: true
     }
   });
+
+  // Keep Pico above normal desktop windows and resting on the taskbar
+  mainWindow.setAlwaysOnTop(true, 'screen-saver');
 
   mainWindow.loadFile(path.join(__dirname, 'src', 'renderer', 'index.html'));
 
@@ -95,3 +110,5 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
+
+module.exports = { TaskbarWorldSurface };
