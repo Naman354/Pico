@@ -52,8 +52,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: windowWidth,
     height: windowHeight,
-    x: posX,
-    y: posY,
+    x: surface.defaultX,
+    y: surface.ledgeY - windowHeight,
     transparent: true,
     frame: false,
     hasShadow: false,
@@ -69,8 +69,19 @@ function createWindow() {
     }
   });
 
-  // Keep Pico above normal desktop windows and resting on the taskbar
-  mainWindow.setAlwaysOnTop(true, 'screen-saver');
+  // Align window bottom precisely with the taskbar top ledge accounting for scaling
+  const bounds = mainWindow.getBounds();
+  const alignedY = surface.ledgeY - bounds.height;
+  mainWindow.setPosition(bounds.x, alignedY);
+
+  // Enforce topmost z-order across all desktop spaces and windows
+  mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  // Reassert topmost status when focus blurs (e.g. clicking taskbar, desktop, or other apps)
+  mainWindow.on('blur', () => {
+    mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+  });
 
   mainWindow.loadFile(path.join(__dirname, 'src', 'renderer', 'index.html'));
 

@@ -7,8 +7,8 @@
 }
 
 html, body {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   margin: 0;
   padding: 0;
   background-color: transparent;
@@ -20,13 +20,13 @@ html, body {
 
 /* 
  * Taskbar Surface World Baseline:
- * #desktop-stage is anchored at bottom: 0px.
- * The window's bottom sits precisely on the visible taskbar top ledge.
- * Pico's shoes touch bottom: 0px, visually standing directly on the physical surface.
+ * #desktop-stage is anchored at bottom: 1px.
+ * The window's bottom terminates precisely at the taskbar ledge,
+ * and Pico's shoes sit just above the top edge with 0px overlap.
  */
 #desktop-stage {
   position: absolute;
-  bottom: 0px; /* Crucial: no floating gap; rests on taskbar surface */
+  bottom: 1px; /* Shoes visually terminate exactly at taskbar boundary without sinking/overlap */
   left: 12px;
   display: flex;
   align-items: flex-end;

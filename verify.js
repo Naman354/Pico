@@ -34,6 +34,15 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Align window bottom precisely with the taskbar top ledge
+  const b = win.getBounds();
+  win.setPosition(b.x, surfaceY - b.height);
+
+  win.setAlwaysOnTop(true, 'screen-saver', 1);
+  win.on('blur', () => {
+    win.setAlwaysOnTop(true, 'screen-saver', 1);
+  });
+
   win.loadFile(path.join(__dirname, 'src', 'renderer', 'index.html'));
 
   win.webContents.on('did-finish-load', async () => {
