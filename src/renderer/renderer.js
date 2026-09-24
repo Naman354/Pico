@@ -1,5 +1,6 @@
 // DOM Elements
 const picoContainer = document.getElementById('pico-container');
+const picoFigure = document.getElementById('pico-figure');
 const bubbleContainer = document.getElementById('bubble-container');
 const picoInput = document.getElementById('pico-input');
 const sendBtn = document.getElementById('send-btn');
@@ -62,6 +63,15 @@ const IdleBlink = {
     }, blinkDurationMs);
   },
 
+  blinkBriefly(durationMs = 120) {
+    if (this.isPaused) return;
+    this.endBlink();
+    picoContainer.classList.add('blinking');
+    this.durationTimer = setTimeout(() => {
+      this.endBlink();
+    }, durationMs);
+  },
+
   endBlink() {
     this.isBlinking = false;
     picoContainer.classList.remove('blinking');
@@ -72,10 +82,11 @@ const IdleBlink = {
   },
 
   isBusy() {
-    if (!picoCharacter) return false;
+    const target = picoFigure || picoCharacter;
+    if (!target) return false;
     return (
-      picoCharacter.classList.contains('reacting') ||
-      picoCharacter.classList.contains('acknowledging') ||
+      target.classList.contains('reacting') ||
+      target.classList.contains('acknowledging') ||
       isBubbleOpen
     );
   },
@@ -108,37 +119,62 @@ window.IdleBlink = IdleBlink;
 const CharacterActions = {
   // Playful bounce on click
   react() {
-    if (!picoCharacter) return;
     this.playAnimation('reacting', 550);
   },
 
   // Subtle nod + warm smile to acknowledge user input (pure animation, zero text)
   acknowledge() {
-    if (!picoCharacter) return;
     this.playAnimation('acknowledging', 650);
   },
 
+  // Small, character-like acknowledgement when cursor enters Pico's hit area
+  glance() {
+    if (this.isBusy()) return;
+    this.playAnimation('glancing', 420);
+    IdleBlink.blinkBriefly(120);
+  },
+
+  isBusy() {
+    const target = picoFigure || picoCharacter;
+    if (!target) return false;
+    return (
+      target.classList.contains('reacting') ||
+      target.classList.contains('acknowledging') ||
+      isBubbleOpen
+    );
+  },
+
   playAnimation(className, durationMs) {
-    // Blinking pauses/overrides while high-priority animations play
-    IdleBlink.pauseAndOverride();
+    // Blinking pauses/overrides while higher-priority animations play
+    if (className !== 'glancing') {
+      IdleBlink.pauseAndOverride();
+    }
 
     if (animationTimeout) {
       clearTimeout(animationTimeout);
       animationTimeout = null;
     }
-    picoCharacter.classList.remove('reacting', 'acknowledging');
-    // Force DOM reflow to restart CSS animation cleanly
-    void picoCharacter.offsetWidth;
-    picoCharacter.classList.add(className);
+
+    const targets = [picoFigure, picoCharacter].filter(Boolean);
+    targets.forEach(el => {
+      el.classList.remove('idle', 'glancing', 'reacting', 'acknowledging');
+      void el.offsetWidth; // Force DOM reflow to restart CSS animation cleanly
+      el.classList.add(className);
+    });
 
     animationTimeout = setTimeout(() => {
-      picoCharacter.classList.remove(className);
+      targets.forEach(el => {
+        el.classList.remove(className);
+        el.classList.add('idle');
+      });
       if (!isBubbleOpen) {
         IdleBlink.resume();
       }
     }, durationMs);
   }
 };
+
+window.CharacterActions = CharacterActions;
 
 // Open attached speech bubble
 function openBubble() {
@@ -223,6 +259,10 @@ window.addEventListener('click', (e) => {
 // Mouse Event Pass-through handling for transparent window
 picoContainer.addEventListener('mouseenter', () => {
   window.picoAPI?.setIgnoreMouseEvents(false);
+  // Trigger character-like hover acknowledgement once per mouse-enter event
+  if (!isBubbleOpen && !CharacterActions.isBusy()) {
+    CharacterActions.glance();
+  }
 });
 
 picoContainer.addEventListener('mouseleave', () => {

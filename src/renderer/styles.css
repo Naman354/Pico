@@ -50,7 +50,17 @@ html, body {
   /* Feet remain firmly planted on the surface */
 }
 
+#pico-figure {
+  position: relative;
+  width: 38px;
+  height: 60px;
+  transform-origin: center bottom;
+}
+
 .pico-character {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 38px;
   height: 60px;
   display: block;
@@ -58,7 +68,6 @@ html, body {
   image-rendering: -webkit-optimize-contrast;
   user-drag: none;
   -webkit-user-drag: none;
-  transform-origin: center bottom;
 }
 
 /* Subtle, brief eyelid blink overlay: perfectly aligned with base character */
@@ -76,13 +85,50 @@ html, body {
   visibility: visible;
 }
 
-/* Pico remains completely still and stable while standing idle */
-.pico-character.idle {
-  animation: none;
+/* 
+ * Idle Behavior:
+ * Very subtle, barely noticeable breathing around the fixed foot/ground anchor.
+ * Feet remain completely stationary and visually locked to the taskbar ledge (0px gap).
+ */
+.pico-figure.idle {
+  animation: pico-breathe 4.2s ease-in-out infinite;
+}
+
+@keyframes pico-breathe {
+  0%, 100% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(1.008, 1.018);
+  }
+}
+
+/*
+ * Hover Behavior:
+ * Small, character-like acknowledgement when the cursor enters Pico's hit area.
+ * Subtle vertical perk + head acknowledgement without lifting feet off the taskbar.
+ */
+.pico-figure.glancing {
+  animation: pico-glance 0.42s cubic-bezier(0.25, 1, 0.5, 1) !important;
+}
+
+@keyframes pico-glance {
+  0% {
+    transform: scale(1, 1);
+  }
+  40% {
+    transform: scale(1.012, 1.025);
+  }
+  75% {
+    transform: scale(1.004, 1.008);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
 }
 
 /* Character Reaction Animation (Playful bounce on click) */
-.pico-character.reacting {
+.pico-figure.reacting, .pico-character.reacting {
   animation: pico-bounce 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
 }
 
@@ -102,7 +148,7 @@ html, body {
 }
 
 /* Acknowledgement Animation (Subtle character nod + smile bob, replacing text) */
-.pico-character.acknowledging {
+.pico-figure.acknowledging, .pico-character.acknowledging {
   animation: pico-nod 0.65s cubic-bezier(0.25, 1, 0.5, 1) !important;
 }
 
