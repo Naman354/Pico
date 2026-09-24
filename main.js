@@ -33,6 +33,9 @@ class TaskbarWorldSurface {
       rightBound: workArea.x + workArea.width,
       bounds,
       workArea,
+      // Usable horizontal bounds for Pico along the taskbar ledge
+      minX: workArea.x + 30,
+      maxX: workArea.x + workArea.width - 280,
       // Default resting X coordinate near the system tray on the taskbar
       defaultX: workArea.x + workArea.width - 320
     };
@@ -42,17 +45,15 @@ class TaskbarWorldSurface {
 function createWindow() {
   const surface = TaskbarWorldSurface.getSurface();
 
-  const windowWidth = 290;
+  // Full-width taskbar ledge strip window
+  const windowWidth = surface.workArea.width;
   const windowHeight = 85;
 
   // Position window so its bottom edge rests precisely on the taskbar ledge
-  const posX = surface.defaultX;
-  const posY = surface.ledgeY - windowHeight;
-
   mainWindow = new BrowserWindow({
     width: windowWidth,
     height: windowHeight,
-    x: surface.defaultX,
+    x: surface.workArea.x,
     y: surface.ledgeY - windowHeight,
     transparent: true,
     frame: false,
@@ -93,6 +94,10 @@ function createWindow() {
     if (win && !win.isDestroyed()) {
       win.setIgnoreMouseEvents(ignore, options);
     }
+  });
+
+  ipcMain.handle('get-taskbar-surface', () => {
+    return TaskbarWorldSurface.getSurface();
   });
 
   // Toggle DevTools with Ctrl+Shift+I in development

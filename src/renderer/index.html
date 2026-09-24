@@ -10,9 +10,17 @@
   <div id="desktop-stage">
     <!-- Tiny Pico Character (~60px) resting on the taskbar ledge -->
     <div id="pico-container">
-      <div id="pico-figure" class="pico-figure idle">
-        <img id="pico-character" class="pico-character" src="pico-idle.png" alt="Pico" draggable="false" />
-        <img id="pico-blink" class="pico-character blink-overlay" src="pico-blink.png" alt="" draggable="false" />
+      <div id="pico-facer" class="pico-facer facing-right">
+        <div id="pico-figure" class="pico-figure idle">
+          <!-- Front-facing Idle Stance & Blink Overlay -->
+          <img id="pico-character" class="pico-character front-idle" src="pico-idle.png" alt="Pico" draggable="false" />
+          <img id="pico-blink" class="pico-character blink-overlay" src="pico-blink.png" alt="" draggable="false" />
+
+          <!-- Side-facing Walking Stance & Alternating Step Frames -->
+          <img id="pico-side-stand" class="pico-character side-frame side-stand" src="pico-side-stand.png" alt="" draggable="false" />
+          <img id="pico-side-walk1" class="pico-character side-frame side-walk-1" src="pico-side-walk-1.png" alt="" draggable="false" />
+          <img id="pico-side-walk2" class="pico-character side-frame side-walk-2" src="pico-side-walk-2.png" alt="" draggable="false" />
+        </div>
       </div>
     </div>
 

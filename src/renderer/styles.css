@@ -27,11 +27,12 @@ html, body {
 #desktop-stage {
   position: absolute;
   bottom: 1px; /* Shoes visually terminate exactly at taskbar boundary without sinking/overlap */
-  left: 12px;
+  left: 0px;
   display: flex;
   align-items: flex-end;
   gap: 10px;
   pointer-events: none; /* transparent clicks pass through */
+  will-change: transform;
 }
 
 /* Pico Character Container (strictly ~60px visible height at desktop scale) */
@@ -43,11 +44,22 @@ html, body {
   pointer-events: auto;
   flex-shrink: 0;
   margin-bottom: 0px; /* Feet rest directly on the surface baseline */
-  transition: transform 0.15s ease-out;
 }
 
-#pico-container:hover {
-  /* Feet remain firmly planted on the surface */
+/* Facing controller: pivots horizontally around ground baseline */
+#pico-facer {
+  position: relative;
+  width: 38px;
+  height: 60px;
+  transform-origin: center bottom;
+}
+
+#pico-facer.facing-left {
+  transform: scaleX(-1);
+}
+
+#pico-facer.facing-right {
+  transform: scaleX(1);
 }
 
 #pico-figure {
@@ -70,7 +82,7 @@ html, body {
   -webkit-user-drag: none;
 }
 
-/* Subtle, brief eyelid blink overlay: perfectly aligned with base character */
+/* Subtle, brief eyelid blink overlay: perfectly aligned with front-facing character */
 .blink-overlay {
   position: absolute;
   top: 0;
@@ -83,6 +95,135 @@ html, body {
 #pico-container.blinking .blink-overlay {
   opacity: 1;
   visibility: visible;
+}
+
+/* Side-facing walk frames derived from authoritative Style A character sheet */
+.side-frame {
+  display: none;
+}
+
+/* Default / Idle: Front-facing character is active */
+.pico-figure.idle #pico-character {
+  display: block;
+}
+.pico-figure.idle .side-frame {
+  display: none;
+}
+
+/* 
+ * Walking State:
+ * Hide front-facing sprite and display authoritative side profile.
+ * Alternate between neutral passing stance, step 1, and step 2.
+ */
+.pico-figure.walking #pico-character,
+.pico-figure.walking .blink-overlay {
+  display: none !important;
+}
+
+/* Default passing stance during walk */
+.pico-figure.walking #pico-side-stand {
+  display: block;
+}
+
+/* Step 1: Front leg forward, back leg back, arm swing */
+.pico-figure.walking.walk-step-1 #pico-side-stand {
+  display: none;
+}
+.pico-figure.walking.walk-step-1 #pico-side-walk1 {
+  display: block;
+}
+
+/* Step 2: Rear leg forward, front leg back, arm swing */
+.pico-figure.walking.walk-step-2 #pico-side-stand {
+  display: none;
+}
+.pico-figure.walking.walk-step-2 #pico-side-walk2 {
+  display: block;
+}
+
+/* 
+ * Turning State:
+ * Smooth, natural body pivot around grounded baseline.
+ * Used when transitioning from idle to walk, reversing direction, or stopping.
+ */
+.pico-figure.turning-to-side {
+  animation: pico-turn-to-side 0.15s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.pico-figure.turning-to-front {
+  animation: pico-turn-to-front 0.15s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.pico-figure.turning-around {
+  animation: pico-turn-around 0.16s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes pico-turn-to-side {
+  0% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(0.35, 1.006) skewY(1deg);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+@keyframes pico-turn-to-front {
+  0% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(0.35, 1.006) skewY(-1deg);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+@keyframes pico-turn-around {
+  0% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(0.2, 1.008);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+/* 
+ * Walking Animation (Grounded Walk Cycle):
+ * Natural, understated, and slightly lazy torso/head cadence:
+ * "a bored little guy casually wandering around", not an energetic game character.
+ * Anchored strictly to transform-origin: center bottom so the grounded shoes NEVER drift (0.000px).
+ */
+.pico-figure.walking {
+  animation: pico-walk-sway 0.72s ease-in-out infinite;
+}
+
+@keyframes pico-walk-sway {
+  0% {
+    /* Passing phase: neutral posture, subtle rise */
+    transform: rotate(0deg) skewX(-0.4deg) scale(0.998, 1.004);
+  }
+  25% {
+    /* Step 1 plant: subtle lazy forward inclination and weight shift */
+    transform: rotate(0.8deg) skewX(-0.8deg) scale(1.004, 0.996);
+  }
+  50% {
+    /* Passing phase: neutral posture, subtle rise */
+    transform: rotate(0deg) skewX(-0.4deg) scale(0.998, 1.004);
+  }
+  75% {
+    /* Step 2 plant: subtle lazy forward inclination and weight shift */
+    transform: rotate(0.8deg) skewX(-0.8deg) scale(1.004, 0.996);
+  }
+  100% {
+    transform: rotate(0deg) skewX(-0.4deg) scale(0.998, 1.004);
+  }
 }
 
 /* 
