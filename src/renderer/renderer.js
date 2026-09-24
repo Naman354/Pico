@@ -122,9 +122,46 @@ const CharacterActions = {
     this.playAnimation('reacting', 550);
   },
 
-  // Subtle nod + warm smile to acknowledge user input (pure animation, zero text)
+  // Subtle character nod + closed-eye acknowledgement to communicate "heard you"
   acknowledge() {
-    this.playAnimation('acknowledging', 650);
+    IdleBlink.pauseAndOverride();
+
+    if (animationTimeout) {
+      clearTimeout(animationTimeout);
+      animationTimeout = null;
+    }
+
+    const targets = [picoFigure, picoCharacter].filter(Boolean);
+    targets.forEach(el => {
+      el.classList.remove('idle', 'glancing', 'reacting', 'acknowledging');
+      void el.offsetWidth; // Force DOM reflow to restart CSS animation cleanly
+      el.classList.add('acknowledging');
+    });
+
+    // Step 2 & 3: Eyes gently close in a warm blink during the nod (~200ms into the nod)
+    setTimeout(() => {
+      const isStillAck = targets.some(el => el.classList.contains('acknowledging'));
+      if (isStillAck) {
+        picoContainer.classList.add('blinking');
+      }
+    }, 200);
+
+    // Step 4: Eyes softly reopen as the head begins rising back up (~480ms)
+    setTimeout(() => {
+      picoContainer.classList.remove('blinking');
+    }, 480);
+
+    // Step 5: Smoothly return to normal idle state at 800ms
+    animationTimeout = setTimeout(() => {
+      targets.forEach(el => {
+        el.classList.remove('acknowledging');
+        el.classList.add('idle');
+      });
+      picoContainer.classList.remove('blinking');
+      if (!isBubbleOpen) {
+        IdleBlink.resume();
+      }
+    }, 800);
   },
 
   // Small, character-like acknowledgement when cursor enters Pico's hit area

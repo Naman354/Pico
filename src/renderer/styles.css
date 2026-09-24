@@ -147,23 +147,35 @@ html, body {
   }
 }
 
-/* Acknowledgement Animation (Subtle character nod + smile bob, replacing text) */
+/* 
+ * Character Acknowledgement Animation (Natural, restrained nod):
+ * Replaces generic body dip with subtle head inclination and gentle nod.
+ * Pico briefly looks toward the input/user (skewX toward input),
+ * nods his head gently with eyes closed, and smoothly returns to normal idle.
+ * Feet remain 100% mathematically locked to the taskbar baseline (0.000px displacement).
+ */
 .pico-figure.acknowledging, .pico-character.acknowledging {
-  animation: pico-nod 0.65s cubic-bezier(0.25, 1, 0.5, 1) !important;
+  animation: pico-acknowledge 0.8s cubic-bezier(0.33, 1, 0.68, 1) !important;
 }
 
-@keyframes pico-nod {
+@keyframes pico-acknowledge {
   0% {
-    transform: translateY(0) rotate(0deg);
+    transform: scale(1, 1) skewX(0deg);
   }
-  30% {
-    transform: translateY(2.5px) rotate(-1.5deg);
+  18% {
+    /* Subtle attentive inclination toward the input (to the right) */
+    transform: scale(1.004, 1.008) skewX(-1.2deg);
   }
-  65% {
-    transform: translateY(-1px) rotate(1deg);
+  42% {
+    /* Natural gentle head nod down — feet remain 100% locked at baseline */
+    transform: scale(1.006, 0.98) skewX(-0.4deg);
+  }
+  68% {
+    /* Head rises back up smoothly */
+    transform: scale(1.002, 0.995) skewX(0.1deg);
   }
   100% {
-    transform: translateY(0) rotate(0deg);
+    transform: scale(1, 1) skewX(0deg);
   }
 }
 
