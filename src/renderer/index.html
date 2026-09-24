@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pico</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="desktop-stage">
+    <!-- Tiny Pico Character (~60px) resting on the taskbar ledge -->
+    <div id="pico-container"></div>
+
+    <!-- Attached Speech Bubble -->
+    <div id="bubble-container">
+      <!-- Tail pointing directly to Pico -->
+      <svg class="bubble-tail" viewBox="0 0 8 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 0 6 L 8 0 L 8 12 Z" fill="#FFFFFF" />
+        <path d="M 8 0 L 0 6 L 8 12" stroke="#E2DDD5" stroke-width="1" fill="none" />
+      </svg>
+
+      <!-- Text input attached to Pico -->
+      <input 
+        id="pico-input" 
+        type="text" 
+        placeholder="Type to Pico..." 
+        autocomplete="off" 
+        spellcheck="false"
+      />
+
+      <!-- Action / Send Button -->
+      <button id="send-btn" aria-label="Send to Pico" title="Send">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <script type="module" src="renderer.js"></script>
+</body>
+</html>

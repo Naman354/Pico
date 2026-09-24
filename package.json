@@ -1,0 +1,20 @@
+{
+  "name": "pico",
+  "version": "0.1.0",
+  "description": "Pico - A tiny desktop companion who quietly lives on your PC",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "verify": "electron verify.js"
+  },
+  "keywords": [
+    "desktop-pet",
+    "companion",
+    "pico"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^34.2.0"
+  }
+}
