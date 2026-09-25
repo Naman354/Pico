@@ -45,16 +45,16 @@ class TaskbarWorldSurface {
 function createWindow() {
   const surface = TaskbarWorldSurface.getSurface();
 
-  // Full-width taskbar ledge strip window
+  // Full-desktop transparent canvas covering the primary display workArea
   const windowWidth = surface.workArea.width;
-  const windowHeight = 85;
+  const windowHeight = surface.workArea.height;
 
-  // Position window so its bottom edge rests precisely on the taskbar ledge
+  // Position window covering workArea so its bottom edge rests precisely on the taskbar ledge
   mainWindow = new BrowserWindow({
     width: windowWidth,
     height: windowHeight,
     x: surface.workArea.x,
-    y: surface.ledgeY - windowHeight,
+    y: surface.workArea.y,
     transparent: true,
     frame: false,
     hasShadow: false,
