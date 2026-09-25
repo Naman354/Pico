@@ -90,7 +90,8 @@ app.whenReady().then(async () => {
         minX: window.WanderController ? window.WanderController.minX : 0,
         maxX: window.WanderController ? window.WanderController.maxX : 0,
         hasFacer: !!facer,
-        hasWalkFrames: !!document.getElementById('pico-walk1') && !!document.getElementById('pico-walk2'),
+        hasWalkFrames: (!!document.getElementById('pico-side-walk1') && !!document.getElementById('pico-side-walk2')) ||
+                       (!!document.getElementById('pico-walk1') && !!document.getElementById('pico-walk2')),
         isIdle: figure.classList.contains('idle'),
         isWalking: figure.classList.contains('walking')
       };
@@ -104,7 +105,7 @@ app.whenReady().then(async () => {
   assert(initMetrics.gapToWindowBottom <= 1.0,
     `Pico feet rest on taskbar baseline (gap: ${initMetrics.gapToWindowBottom.toFixed(2)}px)`);
   assert(initMetrics.hasFacer, 'Pico has #pico-facer for horizontal directional turning');
-  assert(initMetrics.hasWalkFrames, 'Walk frames #pico-walk1 and #pico-walk2 derived from authoritative asset exist in DOM');
+  assert(initMetrics.hasWalkFrames, 'Walk frames derived from authoritative asset exist in DOM');
   assert(initMetrics.isIdle && !initMetrics.isWalking, 'Pico initializes in idle standing state');
 
   // -----------------------------------------------------------------

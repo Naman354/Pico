@@ -12,9 +12,20 @@
     <div id="pico-container">
       <div id="pico-facer" class="pico-facer facing-right">
         <div id="pico-figure" class="pico-figure idle">
-          <!-- Front-facing Idle Stance & Blink Overlay -->
-          <img id="pico-character" class="pico-character front-idle" src="pico-idle.png" alt="Pico" draggable="false" />
-          <img id="pico-blink" class="pico-character blink-overlay" src="pico-blink.png" alt="" draggable="false" />
+          <!-- Front-facing Idle Stance & Attention Shift Rig -->
+          <div id="pico-body" class="pico-body">
+            <img class="pico-character body-frame" src="pico-idle.png" alt="" draggable="false" />
+          </div>
+
+          <div id="pico-head" class="pico-head">
+            <img id="pico-character" class="pico-character front-idle" src="pico-idle.png" alt="Pico" draggable="false" />
+            <!-- Eye Gaze Overlays -->
+            <img id="pico-eyes-left" class="pico-character eye-overlay eyes-left" src="pico-eyes-left.png" alt="" draggable="false" />
+            <img id="pico-eyes-right" class="pico-character eye-overlay eyes-right" src="pico-eyes-right.png" alt="" draggable="false" />
+            <img id="pico-eyes-down" class="pico-character eye-overlay eyes-down" src="pico-eyes-down.png" alt="" draggable="false" />
+            <!-- Eyelid Blink Overlay -->
+            <img id="pico-blink" class="pico-character blink-overlay" src="pico-blink.png" alt="" draggable="false" />
+          </div>
 
           <!-- Side-facing Walking Stance & Alternating Step Frames -->
           <img id="pico-side-stand" class="pico-character side-frame side-stand" src="pico-side-stand.png" alt="" draggable="false" />

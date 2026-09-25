@@ -44,6 +44,7 @@ html, body {
   pointer-events: auto;
   flex-shrink: 0;
   margin-bottom: 0px; /* Feet rest directly on the surface baseline */
+  overflow: visible;
 }
 
 /* Facing controller: pivots horizontally around ground baseline */
@@ -52,6 +53,7 @@ html, body {
   width: 38px;
   height: 60px;
   transform-origin: center bottom;
+  overflow: visible;
 }
 
 #pico-facer.facing-left {
@@ -67,6 +69,7 @@ html, body {
   width: 38px;
   height: 60px;
   transform-origin: center bottom;
+  overflow: visible;
 }
 
 .pico-character {
@@ -80,6 +83,7 @@ html, body {
   image-rendering: -webkit-optimize-contrast;
   user-drag: none;
   -webkit-user-drag: none;
+  overflow: visible;
 }
 
 /* Subtle, brief eyelid blink overlay: perfectly aligned with front-facing character */
@@ -90,11 +94,96 @@ html, body {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
+  z-index: 5;
 }
 
 #pico-container.blinking .blink-overlay {
   opacity: 1;
   visibility: visible;
+}
+
+/* Body layer: torso, shorts, legs, shoes (grounded to taskbar ledge) */
+.pico-body {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 38px;
+  height: 60px;
+  overflow: visible;
+}
+
+.body-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 38px;
+  height: 60px;
+  clip-path: polygon(0 58%, 100% 58%, 100% 100%, 0 100%);
+}
+
+/* Head layer: hair, face, eyes, ears, chin pivoting around the neck */
+.pico-head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 38px;
+  height: 60px;
+  clip-path: polygon(0 0, 100% 0, 100% 60%, 0 60%);
+  transform-origin: 19px 35.6px; /* Neck pivot */
+  transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+  overflow: visible;
+}
+
+/* Eye overlays: sit directly over the eyes */
+.eye-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 38px;
+  height: 60px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 2;
+}
+
+/* Gaze state overlays */
+.pico-figure.gaze-left .eyes-left {
+  opacity: 1;
+  visibility: visible;
+}
+
+.pico-figure.gaze-right .eyes-right {
+  opacity: 1;
+  visibility: visible;
+}
+
+.pico-figure.gaze-down .eyes-down {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Head movement states */
+.pico-figure.head-turn-left .pico-head {
+  transform: rotate(-6deg);
+}
+
+.pico-figure.head-turn-right .pico-head {
+  transform: rotate(6deg);
+}
+
+.pico-figure.head-tilt .pico-head {
+  transform: rotate(5deg);
+}
+
+.pico-figure.head-down .pico-head {
+  transform: rotate(2deg) translateY(0.5px);
+}
+
+/* Subtle relaxed posture / weight shift (feet remain grounded 0px drift) */
+.pico-figure.weight-shift {
+  transform: rotate(0.6deg) skewX(-0.4deg);
 }
 
 /* Side-facing walk frames derived from authoritative Style A character sheet */
@@ -103,7 +192,9 @@ html, body {
 }
 
 /* Default / Idle: Front-facing character is active */
-.pico-figure.idle #pico-character {
+.pico-figure.idle #pico-character,
+.pico-figure.idle .pico-body,
+.pico-figure.idle .pico-head {
   display: block;
 }
 .pico-figure.idle .side-frame {
@@ -116,7 +207,10 @@ html, body {
  * Alternate between neutral passing stance, step 1, and step 2.
  */
 .pico-figure.walking #pico-character,
-.pico-figure.walking .blink-overlay {
+.pico-figure.walking .blink-overlay,
+.pico-figure.walking .eye-overlay,
+.pico-figure.walking .pico-body,
+.pico-figure.walking .pico-head {
   display: none !important;
 }
 

@@ -7,6 +7,11 @@ const bubbleContainer = document.getElementById('bubble-container');
 const picoInput = document.getElementById('pico-input');
 const sendBtn = document.getElementById('send-btn');
 const picoCharacter = document.getElementById('pico-character');
+const picoHead = document.getElementById('pico-head');
+const picoBody = document.getElementById('pico-body');
+const picoEyesLeft = document.getElementById('pico-eyes-left');
+const picoEyesRight = document.getElementById('pico-eyes-right');
+const picoEyesDown = document.getElementById('pico-eyes-down');
 const picoSideStand = document.getElementById('pico-side-stand');
 const picoSideWalk1 = document.getElementById('pico-side-walk1');
 const picoSideWalk2 = document.getElementById('pico-side-walk2');
@@ -97,6 +102,7 @@ const IdleBlink = {
       target.classList.contains('turning-to-front') ||
       target.classList.contains('turning-around') ||
       (window.WanderController && (window.WanderController.isWalking || window.WanderController.isTurning)) ||
+      (window.UserMovement && window.UserMovement.isMovingFromUser) ||
       isBubbleOpen
     );
   },
@@ -125,6 +131,169 @@ const IdleBlink = {
 // Expose on window for automated verification and test coverage
 window.IdleBlink = IdleBlink;
 
+// Autonomous Idle Attention Controller (Natural, subtle looks & posture shifts)
+const IdleAttention = {
+  timer: null,
+  restoreTimer: null,
+  currentState: 'forward', // 'forward', 'glance-left', 'glance-right', 'glance-down', 'turn-left', 'turn-right', 'head-tilt', 'weight-shift'
+  isUserEngaged: false,
+
+  start() {
+    this.scheduleNext();
+  },
+
+  scheduleNext() {
+    this.clearTimers();
+    if (this.isUserEngaged || this.isBusy()) {
+      return;
+    }
+
+    // Irregular interval between autonomous shifts: 3.5s to 7.5s of quiet resting
+    const quietIntervalMs = Math.floor(3500 + Math.random() * 4000);
+    this.timer = setTimeout(() => {
+      this.performAttentionShift();
+    }, quietIntervalMs);
+  },
+
+  performAttentionShift() {
+    if (this.isUserEngaged || this.isBusy()) {
+      this.resetToForward();
+      this.scheduleNext();
+      return;
+    }
+
+    // Probability breakdown:
+    // Primary behavior: Eye movement alone (~50%)
+    // Secondary behavior: Combined eye movement + slight head turn (~25%)
+    // Other occasional behaviors: glance down (~12%), tiny head tilt (~8%), subtle weight shift (~5%)
+    const roll = Math.random();
+    let nextState = 'forward';
+    let durationMs = 1800;
+
+    if (roll < 0.26) {
+      nextState = 'glance-left';
+      durationMs = Math.floor(1400 + Math.random() * 1000);
+    } else if (roll < 0.52) {
+      nextState = 'glance-right';
+      durationMs = Math.floor(1400 + Math.random() * 1000);
+    } else if (roll < 0.65) {
+      nextState = 'turn-left';
+      durationMs = Math.floor(2000 + Math.random() * 1200);
+    } else if (roll < 0.78) {
+      nextState = 'turn-right';
+      durationMs = Math.floor(2000 + Math.random() * 1200);
+    } else if (roll < 0.88) {
+      nextState = 'glance-down';
+      durationMs = Math.floor(1200 + Math.random() * 800);
+    } else if (roll < 0.95) {
+      nextState = 'head-tilt';
+      durationMs = Math.floor(1500 + Math.random() * 1000);
+    } else {
+      nextState = 'weight-shift';
+      durationMs = Math.floor(2200 + Math.random() * 1200);
+    }
+
+    this.applyState(nextState);
+
+    // Return naturally to neutral forward resting
+    this.restoreTimer = setTimeout(() => {
+      this.resetToForward();
+      this.scheduleNext();
+    }, durationMs);
+  },
+
+  applyState(state) {
+    this.currentState = state;
+    this.clearStateClasses();
+
+    if (!picoFigure) return;
+
+    switch (state) {
+      case 'glance-left':
+        picoFigure.classList.add('gaze-left');
+        break;
+      case 'glance-right':
+        picoFigure.classList.add('gaze-right');
+        break;
+      case 'glance-down':
+        picoFigure.classList.add('gaze-down', 'head-down');
+        break;
+      case 'turn-left':
+        picoFigure.classList.add('gaze-left', 'head-turn-left');
+        break;
+      case 'turn-right':
+        picoFigure.classList.add('gaze-right', 'head-turn-right');
+        break;
+      case 'head-tilt':
+        picoFigure.classList.add('head-tilt');
+        break;
+      case 'weight-shift':
+        picoFigure.classList.add('weight-shift');
+        break;
+      case 'forward':
+      default:
+        break;
+    }
+  },
+
+  clearStateClasses() {
+    if (!picoFigure) return;
+    picoFigure.classList.remove(
+      'gaze-left', 'gaze-right', 'gaze-down',
+      'head-turn-left', 'head-turn-right', 'head-tilt', 'head-down',
+      'weight-shift'
+    );
+  },
+
+  resetToForward() {
+    this.currentState = 'forward';
+    this.clearStateClasses();
+  },
+
+  onUserEngage() {
+    this.isUserEngaged = true;
+    this.clearTimers();
+    this.resetToForward();
+  },
+
+  onUserDisengage(delayMs = 1500) {
+    this.clearTimers();
+    this.timer = setTimeout(() => {
+      this.isUserEngaged = false;
+      this.scheduleNext();
+    }, delayMs);
+  },
+
+  isBusy() {
+    const target = picoFigure || picoCharacter;
+    if (!target) return false;
+    return (
+      target.classList.contains('reacting') ||
+      target.classList.contains('acknowledging') ||
+      target.classList.contains('walking') ||
+      target.classList.contains('turning-to-side') ||
+      target.classList.contains('turning-to-front') ||
+      target.classList.contains('turning-around') ||
+      (window.WanderController && (window.WanderController.isWalking || window.WanderController.isTurning)) ||
+      (window.UserMovement && window.UserMovement.isMovingFromUser) ||
+      isBubbleOpen
+    );
+  },
+
+  clearTimers() {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (this.restoreTimer) {
+      clearTimeout(this.restoreTimer);
+      this.restoreTimer = null;
+    }
+  }
+};
+
+window.IdleAttention = IdleAttention;
+
 // Character Animation Controller (Clean visual isolation)
 const CharacterActions = {
   // Playful bounce on click
@@ -135,6 +304,7 @@ const CharacterActions = {
   // Subtle character nod + closed-eye acknowledgement to communicate "heard you"
   acknowledge() {
     IdleBlink.pauseAndOverride();
+    IdleAttention.onUserEngage();
 
     if (animationTimeout) {
       clearTimeout(animationTimeout);
@@ -165,11 +335,14 @@ const CharacterActions = {
     animationTimeout = setTimeout(() => {
       targets.forEach(el => {
         el.classList.remove('acknowledging');
-        el.classList.add('idle');
+        if (!window.WanderController || (!window.WanderController.isWalking && !window.WanderController.isTurning && !(window.UserMovement && window.UserMovement.isMovingFromUser))) {
+          el.classList.add('idle');
+        }
       });
       picoContainer.classList.remove('blinking');
-      if (!isBubbleOpen) {
+      if (!isBubbleOpen && (!window.WanderController || (!window.WanderController.isWalking && !window.WanderController.isTurning && !(window.UserMovement && window.UserMovement.isMovingFromUser)))) {
         IdleBlink.resume();
+        IdleAttention.onUserDisengage(1200);
       }
     }, 800);
   },
@@ -177,6 +350,7 @@ const CharacterActions = {
   // Small, character-like acknowledgement when cursor enters Pico's hit area
   glance() {
     if (this.isBusy()) return;
+    IdleAttention.onUserEngage();
     this.playAnimation('glancing', 420);
     IdleBlink.blinkBriefly(120);
   },
@@ -192,6 +366,7 @@ const CharacterActions = {
       target.classList.contains('turning-to-front') ||
       target.classList.contains('turning-around') ||
       (window.WanderController && (window.WanderController.isWalking || window.WanderController.isTurning)) ||
+      (window.UserMovement && window.UserMovement.isMovingFromUser) ||
       isBubbleOpen
     );
   },
@@ -223,6 +398,7 @@ const CharacterActions = {
       });
       if (!isBubbleOpen && (!window.WanderController || !window.WanderController.isWalking)) {
         IdleBlink.resume();
+        IdleAttention.onUserDisengage(1200);
       }
     }, durationMs);
   }
@@ -436,8 +612,10 @@ const WanderController = {
 
     this.clearWanderTimer();
 
-    // Pause idle breathing and blinking during walking
+    // Pause idle breathing, blinking, and attention shifts during walking
     IdleBlink.pauseAndOverride();
+    IdleAttention.clearTimers();
+    IdleAttention.clearStateClasses();
     picoFigure.classList.remove('idle', 'glancing', 'reacting', 'acknowledging');
 
     const targetDirection = distance > 0 ? 'right' : 'left';
@@ -486,6 +664,7 @@ const WanderController = {
 
           if (!isBubbleOpen) {
             IdleBlink.resume();
+            IdleAttention.onUserDisengage(1500);
           }
 
           this.scheduleNextWander();
@@ -543,6 +722,7 @@ const WanderController = {
 
     if (!isBubbleOpen) {
       IdleBlink.resume();
+      IdleAttention.onUserDisengage(1500);
     }
 
     if (wasActive) {
@@ -558,6 +738,7 @@ function openBubble() {
   if (WanderController.isWalking) {
     WanderController.stop();
   }
+  IdleAttention.onUserEngage();
   isBubbleOpen = true;
   bubbleContainer.classList.add('open');
   picoCharacter.classList.add('happy');
@@ -581,8 +762,9 @@ function closeBubble() {
   // Re-enable click-through for desktop transparent areas
   window.picoAPI?.setIgnoreMouseEvents(true, { forward: true });
 
-  // Resume idle blinking
+  // Resume idle blinking and attention shifts
   IdleBlink.resume();
+  IdleAttention.onUserDisengage(1200);
 
   // Schedule next quiet wander
   WanderController.scheduleNextWander();
@@ -601,15 +783,140 @@ function toggleBubble(e) {
   }
 }
 
-// Handle message send / acknowledgement
+// User-Directed Locomotion Intent Controller
+const UserMovement = {
+  isMovingFromUser: false,
+
+  parseCommand(input) {
+    if (!input || typeof input !== 'string') return null;
+
+    const text = input
+      .toLowerCase()
+      .replace(/[’']/g, "'")
+      .replace(/[^a-z0-9\s'-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!text) return null;
+
+    const hasLeft = /\bleft\b/.test(text);
+    const hasRight = /\bright\b/.test(text);
+
+    if (hasLeft && !hasRight) {
+      const isLeftMovement = 
+        /\b(move|go|walk|step|head|shift|scoot|slide|turn|run)\b.*?\bleft\b/.test(text) ||
+        /\bleft\b.*?\b(side|please|now)\b/.test(text) ||
+        /^(?:please\s+)?(?:move\s+)?left(?:\s+please)?$/.test(text);
+      if (isLeftMovement) return { type: 'directional', direction: 'left' };
+    }
+
+    if (hasRight && !hasLeft) {
+      const isRightMovement = 
+        /\b(move|go|walk|step|head|shift|scoot|slide|turn|run)\b.*?\bright\b/.test(text) ||
+        /\bright\b.*?\b(side|please|now)\b/.test(text) ||
+        /^(?:please\s+)?(?:move\s+)?right(?:\s+please)?$/.test(text);
+      if (isRightMovement) return { type: 'directional', direction: 'right' };
+    }
+
+    if (hasLeft && hasRight) {
+      const lastLeft = text.lastIndexOf('left');
+      const lastRight = text.lastIndexOf('right');
+      return { type: 'directional', direction: lastLeft > lastRight ? 'left' : 'right' };
+    }
+
+    const isObstruction = 
+      /\b(out of (?:the |my )?way|in (?:the |my )?way|get out of (?:the |my )?way)\b/.test(text) ||
+      /\b(move over|move aside|step aside|scoot over|scoot aside)\b/.test(text) ||
+      /\b(blocking|obstructing|hiding)\b/.test(text) ||
+      /\b(you'?re|you are)\s+(?:in\s+(?:the|my)\s+way|blocking)\b/.test(text) ||
+      /\b(move|go|walk|get)\s+away\b/.test(text) ||
+      /^(?:please\s+)?(?:move|scoot|step)(?:\s+over|\s+aside|\s+please)?$/.test(text) ||
+      /\b(can you|could you|please)\s+(?:move|step aside|scoot)\b/.test(text);
+
+    if (isObstruction) return { type: 'clear_view' };
+    return null;
+  },
+
+  calculateTarget(intent, currentX, minX, maxX) {
+    const stepDistance = 80;
+    if (intent.type === 'directional') {
+      if (intent.direction === 'left') {
+        return Math.max(minX, currentX - stepDistance);
+      } else {
+        return Math.min(maxX, currentX + stepDistance);
+      }
+    }
+
+    // "Move out of the way" / clear view:
+    // Prefer moving to the nearest reasonable side (clear immediate obstruction)
+    const leftRoom = currentX - minX;
+    const rightRoom = maxX - currentX;
+
+    let dir = -1;
+    if (leftRoom >= stepDistance && rightRoom >= stepDistance) {
+      dir = -1; // Plenty of room: move left (away from speech bubble)
+    } else if (leftRoom >= stepDistance) {
+      dir = -1;
+    } else if (rightRoom >= stepDistance) {
+      dir = 1;
+    } else {
+      dir = rightRoom > leftRoom ? 1 : -1;
+    }
+
+    return Math.max(minX, Math.min(maxX, currentX + dir * stepDistance));
+  },
+
+  async executeCommand(intent) {
+    const targetX = this.calculateTarget(
+      intent,
+      WanderController.currentX,
+      WanderController.minX,
+      WanderController.maxX
+    );
+
+    this.isMovingFromUser = true;
+    IdleAttention.onUserEngage();
+
+    // Sequence:
+    // 1. Let nod acknowledgement play (~700ms) to communicate "understood"
+    await new Promise(r => setTimeout(r, 700));
+
+    // 2. Smoothly close speech bubble
+    closeBubble();
+
+    // 3. Casually walk to target position and return to idle
+    const resultX = await WanderController.walkTo(targetX, 28);
+    this.isMovingFromUser = false;
+    IdleAttention.onUserDisengage(1500);
+    return resultX;
+  }
+};
+
+window.UserMovement = UserMovement;
+
+// Handle message send / acknowledgement & user-directed locomotion
 function handleSend() {
   const text = picoInput.value.trim();
-  if (!text) return;
+  if (!text) return Promise.resolve(null);
 
-  // Visual character nod & smile (no text description)
-  CharacterActions.acknowledge();
   picoInput.value = '';
+
+  const movementIntent = UserMovement.parseCommand(text);
+
+  // Visual character nod & acknowledgement (communicates "heard you / understood")
+  CharacterActions.acknowledge();
+
+  if (movementIntent) {
+    return UserMovement.executeCommand(movementIntent);
+  }
+
+  return Promise.resolve(null);
 }
+
+window.submitUserText = async (text) => {
+  picoInput.value = text;
+  return await handleSend();
+};
 
 // Event Listeners
 picoContainer.addEventListener('click', toggleBubble);
@@ -648,6 +955,7 @@ picoContainer.addEventListener('mouseenter', () => {
   if (WanderController.isWalking) {
     WanderController.stop();
   }
+  IdleAttention.onUserEngage();
   // Trigger character-like hover acknowledgement once per mouse-enter event
   if (!isBubbleOpen && !CharacterActions.isBusy()) {
     CharacterActions.glance();
@@ -657,6 +965,7 @@ picoContainer.addEventListener('mouseenter', () => {
 picoContainer.addEventListener('mouseleave', () => {
   if (!isBubbleOpen) {
     window.picoAPI?.setIgnoreMouseEvents(true, { forward: true });
+    IdleAttention.onUserDisengage(1500);
   }
 });
 
@@ -680,7 +989,8 @@ window.addEventListener('mousemove', (e) => {
   }
 });
 
-// Initialize natural idle blink loop and autonomous wander controller
+// Initialize natural idle blink loop, autonomous attention controller, and wander controller
 IdleBlink.start();
+IdleAttention.start();
 WanderController.init();
 
