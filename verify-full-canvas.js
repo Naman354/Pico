@@ -68,6 +68,16 @@ app.whenReady().then(async () => {
   mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
 
   ipcMain.handle('get-taskbar-surface', () => surface);
+  ipcMain.handle('get-all-surfaces', () => [{
+    id: 'taskbar-main',
+    type: 'taskbar',
+    label: 'Windows Taskbar',
+    bounds: surface.workArea,
+    walkableRange: { minX: surface.minX, maxX: surface.maxX },
+    elevation: surface.ledgeY,
+    isHome: true,
+    defaultX: surface.defaultX
+  }]);
 
   await mainWindow.loadFile(path.join(__dirname, 'src', 'renderer', 'index.html'));
   await new Promise(r => setTimeout(r, 600));

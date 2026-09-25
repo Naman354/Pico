@@ -1,46 +1,11 @@
 const { app, BrowserWindow, screen, ipcMain } = require('electron');
 const path = require('path');
+const { Surface, SurfaceManager, TaskbarWorldSurface } = require('./surfaces.js');
 
 app.commandLine.appendSwitch('enable-transparent-visuals');
 
 let mainWindow = null;
-
-/**
- * TaskbarWorldSurface:
- * Reusable world-coordinate / physical surface abstraction.
- * Treats the visible Windows taskbar as a real physical ledge.
- * Establishes the exact screen baseline for Pico's feet.
- */
-class TaskbarWorldSurface {
-  static getSurface() {
-    const display = screen.getPrimaryDisplay();
-    const { bounds, workArea } = display;
-
-    // Detect taskbar top edge in desktop screen coordinates
-    let ledgeY = workArea.y + workArea.height; // Standard bottom taskbar ledge
-    let isBottom = true;
-
-    if (workArea.y > bounds.y) {
-      // Top taskbar fallback
-      ledgeY = workArea.y;
-      isBottom = false;
-    }
-
-    return {
-      ledgeY,
-      isBottom,
-      leftBound: workArea.x,
-      rightBound: workArea.x + workArea.width,
-      bounds,
-      workArea,
-      // Usable horizontal bounds for Pico along the taskbar ledge
-      minX: workArea.x + 30,
-      maxX: workArea.x + workArea.width - 280,
-      // Default resting X coordinate near the system tray on the taskbar
-      defaultX: workArea.x + workArea.width - 320
-    };
-  }
-}
+const surfaceManager = new SurfaceManager();
 
 function createWindow() {
   const surface = TaskbarWorldSurface.getSurface();
@@ -100,6 +65,18 @@ function createWindow() {
     return TaskbarWorldSurface.getSurface();
   });
 
+  ipcMain.handle('get-all-surfaces', () => {
+    return surfaceManager.getAllSurfaces();
+  });
+
+  ipcMain.handle('get-active-surface', () => {
+    return surfaceManager.getActiveSurface();
+  });
+
+  ipcMain.handle('get-surface', (_event, id) => {
+    return surfaceManager.getSurface(id);
+  });
+
   // Toggle DevTools with Ctrl+Shift+I in development
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.control && input.shift && input.key.toLowerCase() === 'i') {
@@ -114,6 +91,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  surfaceManager.initPrimaryDisplaySurfaces();
   createWindow();
 
   app.on('activate', () => {
@@ -127,4 +105,4 @@ app.on('window-all-closed', () => {
   }
 });
 
-module.exports = { TaskbarWorldSurface };
+module.exports = { Surface, SurfaceManager, TaskbarWorldSurface, surfaceManager };

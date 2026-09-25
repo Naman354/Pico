@@ -406,9 +406,109 @@ const CharacterActions = {
 
 window.CharacterActions = CharacterActions;
 
+// Physical Surface Abstraction & World Coordinates System (Goal 2)
+const SurfaceManager = {
+  surfaces: new Map(),
+  activeSurfaceId: 'taskbar-main',
+  canvasWidth: window.innerWidth,
+  canvasHeight: window.innerHeight,
+
+  init(surfacesData, initialSurfaceId = 'taskbar-main') {
+    this.surfaces.clear();
+    if (Array.isArray(surfacesData)) {
+      surfacesData.forEach(s => this.register(s));
+    } else if (surfacesData) {
+      this.register(surfacesData);
+    }
+    this.activeSurfaceId = initialSurfaceId;
+    this.updateDimensions();
+  },
+
+  updateDimensions() {
+    this.canvasWidth = window.innerWidth;
+    this.canvasHeight = window.innerHeight;
+  },
+
+  register(surface) {
+    if (!surface || !surface.id) return;
+    this.surfaces.set(surface.id, surface);
+  },
+
+  unregister(id) {
+    return this.surfaces.delete(id);
+  },
+
+  get(id) {
+    return this.surfaces.get(id) || null;
+  },
+
+  getActiveSurface() {
+    return this.get(this.activeSurfaceId) || this.getHomeSurface();
+  },
+
+  setActiveSurface(id) {
+    if (this.surfaces.has(id)) {
+      this.activeSurfaceId = id;
+      return true;
+    }
+    return false;
+  },
+
+  getHomeSurface() {
+    for (const surface of this.surfaces.values()) {
+      if (surface.isHome) return surface;
+    }
+    return this.get('taskbar-main') || null;
+  },
+
+  getAllSurfaces() {
+    return Array.from(this.surfaces.values());
+  },
+
+  // Converts local X along a surface into stage translate coordinates { x, y }
+  // y = 0 represents the baseline taskbar ledge (grounded at bottom: 1px)
+  toCanvasCoords(surfaceId, localX) {
+    const surface = this.get(surfaceId) || this.getHomeSurface();
+    if (!surface) {
+      return { x: Math.round(localX), y: 0 };
+    }
+
+    const homeElevation = this.getHomeSurface()?.elevation ?? this.canvasHeight;
+    const targetElevation = surface.elevation ?? homeElevation;
+    const deltaY = homeElevation - targetElevation;
+
+    return {
+      x: Math.round(localX),
+      y: Math.round(-deltaY),
+      surfaceElevation: targetElevation
+    };
+  }
+};
+
+window.SurfaceManager = SurfaceManager;
+
+// World Coordinates Inspector
+window.getPicoWorldCoords = () => {
+  const surface = SurfaceManager.getActiveSurface();
+  const canvasCoords = SurfaceManager.toCanvasCoords(WanderController.currentSurfaceId, WanderController.currentX);
+  return {
+    surfaceId: WanderController.currentSurfaceId,
+    surfaceType: surface?.type ?? 'taskbar',
+    surfaceLabel: surface?.label ?? 'Windows Taskbar',
+    localX: WanderController.currentX,
+    canvasX: canvasCoords.x,
+    canvasY: canvasCoords.y,
+    elevation: surface?.elevation ?? window.innerHeight,
+    isHome: surface?.isHome ?? true,
+    footDrift: 0
+  };
+};
+
 // Autonomous Taskbar Wandering & Locomotion Controller
 const WanderController = {
+  currentSurfaceId: 'taskbar-main',
   currentX: 0,
+  currentY: 0,
   minX: 30,
   maxX: 1200,
   isWalking: false,
@@ -420,38 +520,75 @@ const WanderController = {
   stepPhase: 0,
 
   async init() {
+    let surfaceData = null;
     try {
-      if (window.picoAPI?.getTaskbarSurface) {
+      if (window.picoAPI?.getAllSurfaces) {
+        const surfaces = await window.picoAPI.getAllSurfaces().catch(() => null);
+        if (surfaces && surfaces.length > 0) {
+          SurfaceManager.init(surfaces, 'taskbar-main');
+          surfaceData = SurfaceManager.getActiveSurface();
+        }
+      }
+
+      if (!surfaceData && window.picoAPI?.getTaskbarSurface) {
         const surface = await window.picoAPI.getTaskbarSurface().catch(() => null);
         if (surface) {
-          this.minX = surface.minX ?? 30;
-          this.maxX = surface.maxX ?? Math.max(300, window.innerWidth - 280);
-          this.currentX = surface.defaultX ?? Math.max(this.minX, this.maxX - 40);
-        } else {
-          this.minX = 30;
-          this.maxX = Math.max(300, window.innerWidth - 280);
-          this.currentX = this.maxX - 40;
+          SurfaceManager.init([{
+            id: 'taskbar-main',
+            type: 'taskbar',
+            label: 'Windows Taskbar',
+            bounds: surface.workArea || { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight },
+            walkableRange: { minX: surface.minX ?? 30, maxX: surface.maxX ?? Math.max(300, window.innerWidth - 280) },
+            elevation: surface.ledgeY ?? window.innerHeight,
+            isHome: true,
+            defaultX: surface.defaultX ?? Math.max(30, window.innerWidth - 320)
+          }], 'taskbar-main');
+          surfaceData = SurfaceManager.getActiveSurface();
         }
-      } else {
-        this.minX = 30;
-        this.maxX = Math.max(300, window.innerWidth - 280);
-        this.currentX = this.maxX - 40;
       }
     } catch {
-      this.minX = 30;
-      this.maxX = Math.max(300, window.innerWidth - 280);
-      this.currentX = this.maxX - 40;
+      // Fallback
     }
 
-    this.setStageX(this.currentX);
+    if (!surfaceData) {
+      SurfaceManager.init([{
+        id: 'taskbar-main',
+        type: 'taskbar',
+        label: 'Windows Taskbar',
+        bounds: { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight },
+        walkableRange: { minX: 30, maxX: Math.max(300, window.innerWidth - 280) },
+        elevation: window.innerHeight,
+        isHome: true,
+        defaultX: Math.max(30, window.innerWidth - 320)
+      }], 'taskbar-main');
+      surfaceData = SurfaceManager.getActiveSurface();
+    }
+
+    this.currentSurfaceId = surfaceData.id;
+    const range = surfaceData.walkableRange || { minX: 30, maxX: Math.max(300, window.innerWidth - 280) };
+    this.minX = range.minX;
+    this.maxX = range.maxX;
+    this.currentX = surfaceData.defaultX ?? Math.max(this.minX, this.maxX - 40);
+    this.currentY = 0;
+
+    this.setStagePosition(this.currentX, this.currentY);
     this.scheduleNextWander();
   },
 
-  setStageX(x) {
+  setStagePosition(x, y = 0) {
     this.currentX = Math.round(x);
+    this.currentY = Math.round(y);
     if (desktopStage) {
-      desktopStage.style.transform = `translateX(${this.currentX}px)`;
+      if (this.currentY === 0) {
+        desktopStage.style.transform = `translateX(${this.currentX}px)`;
+      } else {
+        desktopStage.style.transform = `translate(${this.currentX}px, ${this.currentY}px)`;
+      }
     }
+  },
+
+  setStageX(x) {
+    this.setStagePosition(x, this.currentY || 0);
   },
 
   scheduleNextWander() {
