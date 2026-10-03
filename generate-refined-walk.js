@@ -81,8 +81,9 @@ app.whenReady().then(async () => {
           return c.toDataURL('image/png');
         }
 
-        const walk1 = renderFrame(3.5, -3, -5);
-        const walk2 = renderFrame(-3, 3.5, 5);
+        // Natural, restrained small steps for a bored person walking casually
+        const walk1 = renderFrame(2.0, -1.6, -2.5);
+        const walk2 = renderFrame(-1.6, 2.0, 2.5);
 
         resolve({ walk1, walk2 });
       };

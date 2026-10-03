@@ -76,6 +76,10 @@ class SurfaceManager {
       isBottom = false;
     }
 
+    const PICO_WIDTH = 38;
+    const minX = 0;
+    const maxX = Math.max(0, workArea.width - PICO_WIDTH);
+
     const taskbarSurface = new Surface({
       id: 'taskbar-main',
       type: 'taskbar',
@@ -87,12 +91,12 @@ class SurfaceManager {
         height: bounds.height - workArea.height
       },
       walkableRange: {
-        minX: workArea.x + 30,
-        maxX: workArea.x + workArea.width - 280
+        minX,
+        maxX
       },
       elevation: ledgeY,
       isHome: true,
-      defaultX: workArea.x + workArea.width - 320
+      defaultX: Math.round(workArea.width * 0.78)
     });
 
     this.registerSurface(taskbarSurface);
@@ -117,6 +121,10 @@ class TaskbarWorldSurface {
       isBottom = false;
     }
 
+    const PICO_WIDTH = 38;
+    const minX = 0;
+    const maxX = Math.max(0, workArea.width - PICO_WIDTH);
+
     return {
       ledgeY,
       isBottom,
@@ -124,9 +132,9 @@ class TaskbarWorldSurface {
       rightBound: workArea.x + workArea.width,
       bounds,
       workArea,
-      minX: workArea.x + 30,
-      maxX: workArea.x + workArea.width - 280,
-      defaultX: workArea.x + workArea.width - 320
+      minX,
+      maxX,
+      defaultX: Math.round(workArea.width * 0.78)
     };
   }
 }

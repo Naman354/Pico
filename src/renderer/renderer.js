@@ -509,15 +509,16 @@ const WanderController = {
   currentSurfaceId: 'taskbar-main',
   currentX: 0,
   currentY: 0,
-  minX: 30,
+  minX: 0,
   maxX: 1200,
   isWalking: false,
   isTurning: false,
   currentFacing: 'right', // 'right' or 'left'
   wanderTimer: null,
   animFrameId: null,
-  stepTimer: null,
-  stepPhase: 0,
+  accumulatedDistance: 0,
+  lastStepPhase: -1,
+  currentGoal: null,
 
   async init() {
     let surfaceData = null;
@@ -538,10 +539,10 @@ const WanderController = {
             type: 'taskbar',
             label: 'Windows Taskbar',
             bounds: surface.workArea || { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight },
-            walkableRange: { minX: surface.minX ?? 30, maxX: surface.maxX ?? Math.max(300, window.innerWidth - 280) },
+            walkableRange: { minX: surface.minX ?? 0, maxX: surface.maxX ?? Math.max(0, window.innerWidth - 38) },
             elevation: surface.ledgeY ?? window.innerHeight,
             isHome: true,
-            defaultX: surface.defaultX ?? Math.max(30, window.innerWidth - 320)
+            defaultX: surface.defaultX ?? Math.round(window.innerWidth * 0.78)
           }], 'taskbar-main');
           surfaceData = SurfaceManager.getActiveSurface();
         }
@@ -556,16 +557,16 @@ const WanderController = {
         type: 'taskbar',
         label: 'Windows Taskbar',
         bounds: { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight },
-        walkableRange: { minX: 30, maxX: Math.max(300, window.innerWidth - 280) },
+        walkableRange: { minX: 0, maxX: Math.max(0, window.innerWidth - 38) },
         elevation: window.innerHeight,
         isHome: true,
-        defaultX: Math.max(30, window.innerWidth - 320)
+        defaultX: Math.round(window.innerWidth * 0.78)
       }], 'taskbar-main');
       surfaceData = SurfaceManager.getActiveSurface();
     }
 
     this.currentSurfaceId = surfaceData.id;
-    const range = surfaceData.walkableRange || { minX: 30, maxX: Math.max(300, window.innerWidth - 280) };
+    const range = surfaceData.walkableRange || { minX: 0, maxX: Math.max(0, window.innerWidth - 38) };
     this.minX = range.minX;
     this.maxX = range.maxX;
     this.currentX = surfaceData.defaultX ?? Math.max(this.minX, this.maxX - 40);
@@ -584,6 +585,9 @@ const WanderController = {
       } else {
         desktopStage.style.transform = `translate(${this.currentX}px, ${this.currentY}px)`;
       }
+      // Flip speech bubble to left side if within 240px of the right screen edge
+      const shouldFlip = this.currentX > (this.maxX - 240);
+      desktopStage.classList.toggle('bubble-flipped', shouldFlip);
     }
   },
 
@@ -593,8 +597,8 @@ const WanderController = {
 
   scheduleNextWander() {
     this.clearWanderTimer();
-    // Restrained, occasional wander: 20s to 42s between decisions
-    const delayMs = Math.floor(20000 + Math.random() * 22000);
+    // Restrained, occasional wander: 22s to 45s between decisions
+    const delayMs = Math.floor(22000 + Math.random() * 23000);
     this.wanderTimer = setTimeout(() => {
       this.maybeWander();
     }, delayMs);
@@ -607,9 +611,35 @@ const WanderController = {
     }
   },
 
+  async executeGoal(goal) {
+    if (!goal) return this.currentX;
+
+    // Cancellation / Stop handling
+    if (goal.type === 'CANCEL') {
+      this.stop();
+      return this.currentX;
+    }
+
+    // Preempt active autonomous walk if an explicit user movement command arrives
+    if (this.isWalking && this.currentGoal?.source === 'autonomous' && goal.source === 'user') {
+      this.stop();
+    }
+
+    const surface = SurfaceManager.get(goal.surfaceId || this.currentSurfaceId) || SurfaceManager.getActiveSurface();
+    const minX = surface?.walkableRange?.minX ?? this.minX;
+    const maxX = surface?.walkableRange?.maxX ?? this.maxX;
+
+    const targetX = resolveMovementTarget(goal, this.currentX, minX, maxX);
+    this.currentGoal = goal;
+
+    const resultX = await this.walkTo(targetX, 36);
+    this.currentGoal = null;
+    return resultX;
+  },
+
   maybeWander() {
-    // If Pico is talking, being clicked, or hovering: quietly postpone
-    if (this.isWalking || this.isTurning || isBubbleOpen || CharacterActions.isBusy()) {
+    // If Pico is talking, being clicked, hovering, or user movement active: quietly postpone
+    if (this.isWalking || this.isTurning || isBubbleOpen || CharacterActions.isBusy() || UserMovement.isMovingFromUser || (this.currentGoal && this.currentGoal.source === 'user')) {
       this.scheduleNextWander();
       return;
     }
@@ -624,28 +654,23 @@ const WanderController = {
   },
 
   wander() {
-    if (this.isWalking || this.isTurning || isBubbleOpen || CharacterActions.isBusy()) return;
+    if (this.isWalking || this.isTurning || isBubbleOpen || CharacterActions.isBusy() || UserMovement.isMovingFromUser) return;
 
-    // Pick a gentle, short walk distance between 60px and 130px
-    const distance = Math.floor(60 + Math.random() * 70);
-
-    // Direction selection respecting boundaries
-    let dir = Math.random() < 0.5 ? -1 : 1;
-    if (this.currentX - distance < this.minX) {
-      dir = 1;
-    } else if (this.currentX + distance > this.maxX) {
-      dir = -1;
+    let dir = Math.random() < 0.5 ? 'left' : 'right';
+    if (this.currentX - 80 < this.minX) {
+      dir = 'right';
+    } else if (this.currentX + 80 > this.maxX) {
+      dir = 'left';
     }
 
-    let targetX = this.currentX + distance * dir;
-    targetX = Math.max(this.minX, Math.min(this.maxX, targetX));
+    const goalType = Math.random() < 0.3 ? 'MEDIUM' : 'SHORT';
+    const goal = new MovementGoal({
+      type: goalType,
+      direction: dir,
+      source: 'autonomous'
+    });
 
-    if (Math.abs(targetX - this.currentX) < 20) {
-      this.scheduleNextWander();
-      return;
-    }
-
-    this.walkTo(targetX);
+    this.executeGoal(goal);
   },
 
   // Turn from front-facing idle to side profile facing the given direction
@@ -685,7 +710,7 @@ const WanderController = {
   turnAround(newDirection) {
     return new Promise((resolve) => {
       this.isTurning = true;
-      this.stopStepCycle();
+      this.clearStepAnimation();
 
       picoFigure.classList.remove('turning-to-side', 'turning-to-front');
       void picoFigure.offsetWidth;
@@ -716,7 +741,7 @@ const WanderController = {
   turnToFront() {
     return new Promise((resolve) => {
       this.isTurning = true;
-      this.stopStepCycle();
+      this.clearStepAnimation();
 
       picoFigure.classList.remove('turning-to-side', 'turning-around');
       void picoFigure.offsetWidth;
@@ -737,15 +762,16 @@ const WanderController = {
     });
   },
 
-  async walkTo(targetX, speedPxPerSec = 28) {
+  async walkTo(targetX, speedPxPerSec = 36) {
     if (this.isWalking) {
       this.stop();
     }
 
     targetX = Math.max(this.minX, Math.min(this.maxX, Math.round(targetX)));
     const startX = this.currentX;
-    const distance = targetX - startX;
-    if (Math.abs(distance) < 2) return Promise.resolve(this.currentX);
+    const totalDistance = targetX - startX;
+    const absDistance = Math.abs(totalDistance);
+    if (absDistance < 2) return Promise.resolve(this.currentX);
 
     this.clearWanderTimer();
 
@@ -755,7 +781,7 @@ const WanderController = {
     IdleAttention.clearStateClasses();
     picoFigure.classList.remove('idle', 'glancing', 'reacting', 'acknowledging');
 
-    const targetDirection = distance > 0 ? 'right' : 'left';
+    const targetDirection = totalDistance > 0 ? 'right' : 'left';
 
     // 1. Turning: if idle front-facing, transition to side profile
     if (!picoFigure.classList.contains('walking')) {
@@ -766,10 +792,20 @@ const WanderController = {
     }
 
     this.isWalking = true;
-    this.startStepCycle();
+    this.accumulatedDistance = 0;
+    this.lastStepPhase = -1;
+    this.updateStepAnimation();
 
-    const durationMs = Math.max(500, (Math.abs(distance) / speedPxPerSec) * 1000);
-    const startTime = performance.now();
+    // Locomotion Kinematics:
+    // Natural cruising speed of a calm, casual desktop resident (36 px/s).
+    // Bounded acceleration and deceleration zones (12px each) so long journeys
+    // cruise smoothly at full speed without multi-second creeping or stalling.
+    const cruiseSpeed = Math.max(16, speedPxPerSec);
+    const accelDist = Math.min(12, absDistance / 2);
+    const decelDist = accelDist;
+
+    let previousTime = performance.now();
+    let travelledDist = 0;
 
     return new Promise((resolve) => {
       const step = async (currentTime) => {
@@ -778,25 +814,39 @@ const WanderController = {
           return;
         }
 
-        const elapsed = currentTime - startTime;
-        const progress = Math.min(1, elapsed / durationMs);
+        const dt = Math.min(0.05, (currentTime - previousTime) / 1000);
+        previousTime = currentTime;
 
-        // Gentle ease-in-out for starting and stopping naturally
-        const easedProgress = progress < 0.5 
-          ? 2 * progress * progress 
-          : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+        // Kinematic velocity profile:
+        let currentSpeed;
+        if (travelledDist < accelDist) {
+          const p = Math.max(0, travelledDist / accelDist);
+          currentSpeed = Math.max(12, cruiseSpeed * Math.sqrt(p));
+        } else if (travelledDist > absDistance - decelDist) {
+          const rem = Math.max(0, absDistance - travelledDist);
+          const p = Math.max(0, rem / decelDist);
+          currentSpeed = Math.max(8, cruiseSpeed * Math.sqrt(p));
+        } else {
+          currentSpeed = cruiseSpeed;
+        }
 
-        const newX = startX + distance * easedProgress;
+        const moveDelta = currentSpeed * dt;
+        travelledDist = Math.min(absDistance, travelledDist + moveDelta);
+        const newX = startX + (totalDistance > 0 ? travelledDist : -travelledDist);
         this.setStageX(newX);
 
-        if (progress < 1) {
+        // Advance animation state strictly based on ground translation
+        this.accumulatedDistance += moveDelta;
+        this.updateStepAnimation();
+
+        if (travelledDist < absDistance) {
           this.animFrameId = requestAnimationFrame(step);
         } else {
           this.setStageX(targetX);
           this.isWalking = false;
-          this.stopStepCycle();
+          this.clearStepAnimation();
 
-          // 4. Stopping: naturally transition back to front-facing idle stance
+          // Transition back to front-facing idle stance
           await this.turnToFront();
 
           if (!isBubbleOpen) {
@@ -813,32 +863,37 @@ const WanderController = {
     });
   },
 
+  updateStepAnimation() {
+    if (!this.isWalking) return;
+    // Step cadence: 1 step per ~10px of translation
+    // 0: Passing (stand) -> 1: Step 1 -> 2: Passing (stand) -> 3: Step 2
+    const stepStride = 10;
+    const phase = Math.floor(this.accumulatedDistance / stepStride) % 4;
+    if (phase === this.lastStepPhase) return;
+    this.lastStepPhase = phase;
+
+    picoFigure.classList.remove('walk-step-1', 'walk-step-2', 'walk-passing');
+    if (phase === 1) {
+      picoFigure.classList.add('walk-step-1');
+    } else if (phase === 3) {
+      picoFigure.classList.add('walk-step-2');
+    } else {
+      picoFigure.classList.add('walk-passing');
+    }
+  },
+
+  clearStepAnimation() {
+    this.lastStepPhase = -1;
+    picoFigure.classList.remove('walk-step-1', 'walk-step-2', 'walk-passing');
+  },
+
   startStepCycle() {
-    this.stopStepCycle();
-    this.stepPhase = 0;
-    // Step cadence: alternates every ~180ms between passing, step 1, passing, step 2
-    // Full walk cycle = 720ms, perfectly synchronized with 0.72s CSS body sway
-    this.stepTimer = setInterval(() => {
-      if (!this.isWalking || this.isTurning) {
-        this.stopStepCycle();
-        return;
-      }
-      this.stepPhase = (this.stepPhase + 1) % 4;
-      picoFigure.classList.remove('walk-step-1', 'walk-step-2');
-      if (this.stepPhase === 1) {
-        picoFigure.classList.add('walk-step-1');
-      } else if (this.stepPhase === 3) {
-        picoFigure.classList.add('walk-step-2');
-      }
-    }, 180);
+    this.clearStepAnimation();
+    this.updateStepAnimation();
   },
 
   stopStepCycle() {
-    if (this.stepTimer) {
-      clearInterval(this.stepTimer);
-      this.stepTimer = null;
-    }
-    picoFigure.classList.remove('walk-step-1', 'walk-step-2');
+    this.clearStepAnimation();
   },
 
   stop() {
@@ -851,7 +906,7 @@ const WanderController = {
       this.animFrameId = null;
     }
 
-    this.stopStepCycle();
+    this.clearStepAnimation();
 
     // Immediately restore clean front-facing idle standing
     picoFigure.classList.remove('walking', 'turning-to-side', 'turning-to-front', 'turning-around');
@@ -920,6 +975,111 @@ function toggleBubble(e) {
   }
 }
 
+// Unified Movement Goal Data Model (Goal 3)
+class MovementGoal {
+  constructor({
+    type = 'SHORT',
+    direction = null,
+    source = 'user',
+    targetX = null,
+    surfaceId = null,
+    interruptible = true
+  }) {
+    this.type = type; // 'SHORT' | 'MEDIUM' | 'LONG' | 'DESTINATION_EDGE' | 'OPPOSITE_EDGE' | 'MAX_EXTENT' | 'CONTINUOUS' | 'CLEAR_VIEW' | 'CANCEL' | 'directional'
+    this.direction = direction; // 'left' | 'right' | null
+    this.source = source; // 'user' | 'autonomous' | 'activity'
+    this.targetX = targetX;
+    this.surfaceId = surfaceId;
+    this.interruptible = interruptible;
+    this.createdAt = performance.now();
+  }
+}
+
+window.MovementGoal = MovementGoal;
+
+// Unified Movement Target Resolver
+function resolveMovementTarget(goal, currentX, minX, maxX) {
+  if (!goal) return currentX;
+
+  if (goal.targetX !== null && goal.targetX !== undefined && !isNaN(goal.targetX)) {
+    return Math.max(minX, Math.min(maxX, Math.round(goal.targetX)));
+  }
+
+  // Direction resolution (-1 = left, +1 = right)
+  let dir = goal.direction === 'left' ? -1 : (goal.direction === 'right' ? 1 : 0);
+
+  // If direction is unspecified and not an obstruction or cancellation, choose direction with more room
+  if (dir === 0 && goal.type !== 'CANCEL' && goal.type !== 'CLEAR_VIEW' && goal.type !== 'OPPOSITE_EDGE') {
+    const leftSpace = currentX - minX;
+    const rightSpace = maxX - currentX;
+    dir = rightSpace >= leftSpace ? 1 : -1;
+  }
+
+  switch (goal.type) {
+    case 'CANCEL':
+      return currentX;
+
+    case 'SHORT':
+    case 'directional': {
+      // Default short scope (~80px, strictly preserving Milestone 2 baseline)
+      const stepDistance = 80;
+      return Math.max(minX, Math.min(maxX, currentX + dir * stepDistance));
+    }
+
+    case 'MEDIUM': {
+      // Medium scope ("walk a bit", "a little"): ~160px
+      const stepDistance = 160;
+      return Math.max(minX, Math.min(maxX, currentX + dir * stepDistance));
+    }
+
+    case 'LONG': {
+      // Long scope ("go far", "way right"): ~400px
+      const stepDistance = 400;
+      return Math.max(minX, Math.min(maxX, currentX + dir * stepDistance));
+    }
+
+    case 'DESTINATION_EDGE': {
+      // "Go to the right edge" / "walk to the left edge"
+      return dir > 0 ? maxX : minX;
+    }
+
+    case 'OPPOSITE_EDGE': {
+      // "Go to the other edge" / "opposite side"
+      const mid = (minX + maxX) / 2;
+      return currentX >= mid ? minX : maxX;
+    }
+
+    case 'MAX_EXTENT':
+    case 'CONTINUOUS': {
+      // "Walk all the way left/right", "Keep walking right"
+      return dir > 0 ? maxX : minX;
+    }
+
+    case 'CLEAR_VIEW': {
+      // "Get out of the way" / "blocking view": choose nearest unblocking spot
+      const stepDistance = 110;
+      const leftRoom = currentX - minX;
+      const rightRoom = maxX - currentX;
+
+      let clearDir = -1;
+      if (leftRoom >= stepDistance && rightRoom >= stepDistance) {
+        clearDir = -1; // Plenty of room: move left away from speech bubble
+      } else if (leftRoom >= stepDistance) {
+        clearDir = -1;
+      } else if (rightRoom >= stepDistance) {
+        clearDir = 1;
+      } else {
+        clearDir = rightRoom > leftRoom ? 1 : -1;
+      }
+
+      return Math.max(minX, Math.min(maxX, currentX + clearDir * stepDistance));
+    }
+
+    default:
+      return Math.max(minX, Math.min(maxX, currentX + dir * 80));
+  }
+}
+
 // User-Directed Locomotion Intent Controller
 const UserMovement = {
   isMovingFromUser: false,
@@ -936,83 +1096,92 @@ const UserMovement = {
 
     if (!text) return null;
 
+    // 1. Cancellation / Stop (preemption)
+    if (/\b(stop|halt|wait|freeze|stay|hold on|don't move|dont move|pause)\b/.test(text)) {
+      return { type: 'CANCEL', direction: null };
+    }
+
+    // 2. Opposite Edge
+    if (/\b(other (?:side|edge)|opposite (?:side|edge))\b/.test(text)) {
+      return { type: 'OPPOSITE_EDGE', direction: null };
+    }
+
     const hasLeft = /\bleft\b/.test(text);
     const hasRight = /\bright\b/.test(text);
+    let dir = null;
+    if (hasLeft && !hasRight) dir = 'left';
+    else if (hasRight && !hasLeft) dir = 'right';
+    else if (hasLeft && hasRight) dir = text.lastIndexOf('left') > text.lastIndexOf('right') ? 'left' : 'right';
 
-    if (hasLeft && !hasRight) {
-      const isLeftMovement = 
-        /\b(move|go|walk|step|head|shift|scoot|slide|turn|run)\b.*?\bleft\b/.test(text) ||
-        /\bleft\b.*?\b(side|please|now)\b/.test(text) ||
-        /^(?:please\s+)?(?:move\s+)?left(?:\s+please)?$/.test(text);
-      if (isLeftMovement) return { type: 'directional', direction: 'left' };
+    // 3. Destination Edge / To the edge
+    if (/\b(to the (?:right|left) edge|to the edge|to the end)\b/.test(text)) {
+      return { type: 'DESTINATION_EDGE', direction: dir || (hasLeft ? 'left' : 'right') };
     }
 
-    if (hasRight && !hasLeft) {
-      const isRightMovement = 
-        /\b(move|go|walk|step|head|shift|scoot|slide|turn|run)\b.*?\bright\b/.test(text) ||
-        /\bright\b.*?\b(side|please|now)\b/.test(text) ||
-        /^(?:please\s+)?(?:move\s+)?right(?:\s+please)?$/.test(text);
-      if (isRightMovement) return { type: 'directional', direction: 'right' };
+    // 4. Max Extent / All the way
+    if (/\b(all the way|as far as (?:you can|possible))\b/.test(text)) {
+      return { type: 'MAX_EXTENT', direction: dir || (hasLeft ? 'left' : 'right') };
     }
 
-    if (hasLeft && hasRight) {
-      const lastLeft = text.lastIndexOf('left');
-      const lastRight = text.lastIndexOf('right');
-      return { type: 'directional', direction: lastLeft > lastRight ? 'left' : 'right' };
+    // 5. Continuous Walk
+    if (/\b(keep (?:walking|going|moving|stepping)|continue (?:walking|going|moving))\b/.test(text)) {
+      return { type: 'CONTINUOUS', direction: dir || (hasLeft ? 'left' : 'right') };
     }
 
-    const isObstruction = 
+    // 6. Obstruction / Clear View (when no explicit directional movement is requested)
+    const isObstruction =
       /\b(out of (?:the |my )?way|in (?:the |my )?way|get out of (?:the |my )?way)\b/.test(text) ||
       /\b(move over|move aside|step aside|scoot over|scoot aside)\b/.test(text) ||
       /\b(blocking|obstructing|hiding)\b/.test(text) ||
       /\b(you'?re|you are)\s+(?:in\s+(?:the|my)\s+way|blocking)\b/.test(text) ||
-      /\b(move|go|walk|get)\s+away\b/.test(text) ||
-      /^(?:please\s+)?(?:move|scoot|step)(?:\s+over|\s+aside|\s+please)?$/.test(text) ||
-      /\b(can you|could you|please)\s+(?:move|step aside|scoot)\b/.test(text);
+      /\b(move|go|walk|get)\s+away\b/.test(text);
 
-    if (isObstruction) return { type: 'clear_view' };
+    if (isObstruction && !dir) {
+      return { type: 'CLEAR_VIEW', direction: null };
+    }
+
+    // 7. Distance Scopes (Long, Medium, Short)
+    const isMovementVerb = /\b(move|go|walk|step|head|shift|scoot|slide|turn|run)\b/.test(text);
+    const isFar = /\b(far|a long way|a lot|way)\b/.test(text);
+    const isMedium = /\b(a bit|a little|somewhat|a few steps|a step)\b/.test(text);
+
+    if (isFar && (dir || isMovementVerb)) {
+      return { type: 'LONG', direction: dir };
+    }
+
+    if (isMedium && (dir || isMovementVerb)) {
+      return { type: 'MEDIUM', direction: dir };
+    }
+
+    if (dir || isMovementVerb || isObstruction) {
+      return { type: 'SHORT', direction: dir };
+    }
+
     return null;
   },
 
   calculateTarget(intent, currentX, minX, maxX) {
-    const stepDistance = 80;
-    if (intent.type === 'directional') {
-      if (intent.direction === 'left') {
-        return Math.max(minX, currentX - stepDistance);
-      } else {
-        return Math.min(maxX, currentX + stepDistance);
-      }
-    }
-
-    // "Move out of the way" / clear view:
-    // Prefer moving to the nearest reasonable side (clear immediate obstruction)
-    const leftRoom = currentX - minX;
-    const rightRoom = maxX - currentX;
-
-    let dir = -1;
-    if (leftRoom >= stepDistance && rightRoom >= stepDistance) {
-      dir = -1; // Plenty of room: move left (away from speech bubble)
-    } else if (leftRoom >= stepDistance) {
-      dir = -1;
-    } else if (rightRoom >= stepDistance) {
-      dir = 1;
-    } else {
-      dir = rightRoom > leftRoom ? 1 : -1;
-    }
-
-    return Math.max(minX, Math.min(maxX, currentX + dir * stepDistance));
+    return resolveMovementTarget(intent, currentX, minX, maxX);
   },
 
   async executeCommand(intent) {
-    const targetX = this.calculateTarget(
-      intent,
-      WanderController.currentX,
-      WanderController.minX,
-      WanderController.maxX
-    );
+    const goal = new MovementGoal({
+      type: intent.type,
+      direction: intent.direction,
+      source: 'user'
+    });
 
     this.isMovingFromUser = true;
     IdleAttention.onUserEngage();
+
+    // Cancellation / Stop handling: immediate execution without delay
+    if (goal.type === 'CANCEL') {
+      closeBubble();
+      await WanderController.executeGoal(goal);
+      this.isMovingFromUser = false;
+      IdleAttention.onUserDisengage(1500);
+      return WanderController.currentX;
+    }
 
     // Sequence:
     // 1. Let nod acknowledgement play (~700ms) to communicate "understood"
@@ -1021,8 +1190,8 @@ const UserMovement = {
     // 2. Smoothly close speech bubble
     closeBubble();
 
-    // 3. Casually walk to target position and return to idle
-    const resultX = await WanderController.walkTo(targetX, 28);
+    // 3. Casually walk to target position via unified locomotion engine and return to idle
+    const resultX = await WanderController.executeGoal(goal);
     this.isMovingFromUser = false;
     IdleAttention.onUserDisengage(1500);
     return resultX;
@@ -1087,11 +1256,16 @@ window.addEventListener('click', (e) => {
 });
 
 // Mouse Event Pass-through handling for transparent window
+// State-guarded to prevent IPC flooding and Win32 SetWindowLongPtr compositor stalls
+let lastIgnoreState = null;
+function setIgnoreMouseEvents(ignore, options) {
+  if (lastIgnoreState === ignore) return;
+  lastIgnoreState = ignore;
+  window.picoAPI?.setIgnoreMouseEvents(ignore, options);
+}
+
 picoContainer.addEventListener('mouseenter', () => {
-  window.picoAPI?.setIgnoreMouseEvents(false);
-  if (WanderController.isWalking) {
-    WanderController.stop();
-  }
+  setIgnoreMouseEvents(false);
   IdleAttention.onUserEngage();
   // Trigger character-like hover acknowledgement once per mouse-enter event
   if (!isBubbleOpen && !CharacterActions.isBusy()) {
@@ -1101,18 +1275,18 @@ picoContainer.addEventListener('mouseenter', () => {
 
 picoContainer.addEventListener('mouseleave', () => {
   if (!isBubbleOpen) {
-    window.picoAPI?.setIgnoreMouseEvents(true, { forward: true });
+    setIgnoreMouseEvents(true, { forward: true });
     IdleAttention.onUserDisengage(1500);
   }
 });
 
 bubbleContainer.addEventListener('mouseenter', () => {
-  window.picoAPI?.setIgnoreMouseEvents(false);
+  setIgnoreMouseEvents(false);
 });
 
 bubbleContainer.addEventListener('mouseleave', () => {
   if (!isBubbleOpen) {
-    window.picoAPI?.setIgnoreMouseEvents(true, { forward: true });
+    setIgnoreMouseEvents(true, { forward: true });
   }
 });
 
@@ -1120,9 +1294,9 @@ window.addEventListener('mousemove', (e) => {
   const overPico = !!e.target.closest('#pico-container');
   const overBubble = !!e.target.closest('#bubble-container');
   if (overPico || (isBubbleOpen && overBubble)) {
-    window.picoAPI?.setIgnoreMouseEvents(false);
+    setIgnoreMouseEvents(false);
   } else if (!isBubbleOpen) {
-    window.picoAPI?.setIgnoreMouseEvents(true, { forward: true });
+    setIgnoreMouseEvents(true, { forward: true });
   }
 });
 

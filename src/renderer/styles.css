@@ -28,16 +28,17 @@ html, body {
   position: absolute;
   bottom: 1px; /* Shoes visually terminate exactly at taskbar boundary without sinking/overlap */
   left: 0px;
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
+  width: 38px;
+  height: 60px;
   pointer-events: none; /* transparent clicks pass through */
   will-change: transform;
 }
 
 /* Pico Character Container (strictly ~60px visible height at desktop scale) */
 #pico-container {
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 38px;
   height: 60px;
   cursor: pointer;
@@ -289,35 +290,27 @@ html, body {
 }
 
 /* 
- * Walking Animation (Grounded Walk Cycle):
- * Natural, understated, and slightly lazy torso/head cadence:
- * "a bored little guy casually wandering around", not an energetic game character.
- * Anchored strictly to transform-origin: center bottom so the grounded shoes NEVER drift (0.000px).
+ * Walking State:
+ * Natural, restrained, grounded posture for a bored little guy strolling on the taskbar.
+ * Feet remain 100% physically locked to the taskbar baseline with 0.000px vertical drift.
+ * Zero vertical bobbing or bouncing (scaleY is strictly 1.0, translateY is 0px).
+ * Subtle natural weight shift is driven in lockstep with the distance-based step cycle.
  */
 .pico-figure.walking {
-  animation: pico-walk-sway 0.72s ease-in-out infinite;
+  transform-origin: center bottom;
+  transform: skewX(-0.2deg);
 }
 
-@keyframes pico-walk-sway {
-  0% {
-    /* Passing phase: neutral posture, subtle rise */
-    transform: rotate(0deg) skewX(-0.4deg) scale(0.998, 1.004);
-  }
-  25% {
-    /* Step 1 plant: subtle lazy forward inclination and weight shift */
-    transform: rotate(0.8deg) skewX(-0.8deg) scale(1.004, 0.996);
-  }
-  50% {
-    /* Passing phase: neutral posture, subtle rise */
-    transform: rotate(0deg) skewX(-0.4deg) scale(0.998, 1.004);
-  }
-  75% {
-    /* Step 2 plant: subtle lazy forward inclination and weight shift */
-    transform: rotate(0.8deg) skewX(-0.8deg) scale(1.004, 0.996);
-  }
-  100% {
-    transform: rotate(0deg) skewX(-0.4deg) scale(0.998, 1.004);
-  }
+.pico-figure.walking.walk-passing {
+  transform: skewX(-0.2deg);
+}
+
+.pico-figure.walking.walk-step-1 {
+  transform: skewX(-0.35deg) rotate(0.2deg);
+}
+
+.pico-figure.walking.walk-step-2 {
+  transform: skewX(-0.35deg) rotate(0.2deg);
 }
 
 /* 
@@ -416,7 +409,9 @@ html, body {
 
 /* Attached Speech Input Bubble */
 #bubble-container {
-  position: relative;
+  position: absolute;
+  left: 48px; /* 10px to the right of Pico */
+  bottom: 12px; /* Aligns comfortably with Pico's head height above taskbar */
   display: flex;
   align-items: center;
   background: #FFFFFF;
@@ -425,7 +420,6 @@ html, body {
   height: 38px;
   width: 220px;
   padding: 4px 6px 4px 12px;
-  margin-bottom: 16px; /* Aligns comfortably with Pico's head height above taskbar */
   box-shadow:
     0 4px 14px rgba(45, 30, 15, 0.09),
     0 1px 3px rgba(45, 30, 15, 0.05);
@@ -442,6 +436,24 @@ html, body {
   opacity: 1;
   transform: scale(1) translateX(0);
   pointer-events: auto;
+}
+
+/* Flipped speech bubble when near right screen boundary (Pico stays visible at edge) */
+#desktop-stage.bubble-flipped #bubble-container {
+  left: auto;
+  right: 48px; /* 10px to the left of Pico */
+  transform-origin: right center;
+  transform: scale(0.85) translateX(6px);
+}
+
+#desktop-stage.bubble-flipped #bubble-container.open {
+  transform: scale(1) translateX(0);
+}
+
+#desktop-stage.bubble-flipped .bubble-tail {
+  left: auto;
+  right: -7px;
+  transform: translateY(-50%) scaleX(-1);
 }
 
 /* Speech Bubble Tail pointing towards Pico */
