@@ -991,6 +991,38 @@ const WanderController = {
       this.stop();
     }
 
+    // Hop Up / Jump Up goal
+    if (goal.type === 'JUMP_UP') {
+      const reachable = SurfaceManager.getReachableSurfaces(this.currentSurfaceId, this.currentX, {
+        maxJumpHeight: 180,
+        maxJumpReach: 150,
+        maxDropHeight: 180
+      });
+      const upTarget = reachable.find(r => r.transitionType === 'jump_up');
+      if (upTarget) {
+        return await this.jumpToSurface(upTarget.surfaceId, upTarget.targetLandingX);
+      }
+      return this.currentX;
+    }
+
+    // Drop Down / Jump Down / Come Down goal
+    if (goal.type === 'DROP_DOWN') {
+      const reachable = SurfaceManager.getReachableSurfaces(this.currentSurfaceId, this.currentX, {
+        maxJumpHeight: 180,
+        maxJumpReach: 150,
+        maxDropHeight: 600
+      });
+      const downTarget = reachable.find(r => r.transitionType === 'drop_down' || r.transitionType === 'hop_down');
+      if (downTarget) {
+        return await this.dropDownToSurface(downTarget.surfaceId, downTarget.targetLandingX);
+      }
+      const home = SurfaceManager.getHomeSurface();
+      if (home && this.currentSurfaceId !== home.id) {
+        return await this.dropDownToSurface(home.id, this.currentX);
+      }
+      return this.currentX;
+    }
+
     const surface = SurfaceManager.get(goal.surfaceId || this.currentSurfaceId) || SurfaceManager.getActiveSurface();
     const minX = surface?.walkableRange?.minX ?? this.minX;
     const maxX = surface?.walkableRange?.maxX ?? this.maxX;
@@ -1293,6 +1325,246 @@ const WanderController = {
     this.clearStepAnimation();
   },
 
+  // Phase 3 — Step 2: Stylized Hop Kinematics (Jump Up to Higher Ledge)
+  async jumpToSurface(targetSurfaceId, targetLandingX = null) {
+    if (this.isWalking || this.isTurning) {
+      this.stop();
+    }
+
+    const targetSurface = SurfaceManager.get(targetSurfaceId);
+    if (!targetSurface) return this.currentX;
+
+    const startX = this.currentX;
+    const startY = this.currentY || 0;
+
+    const minX = targetSurface.walkableRange?.minX ?? targetSurface.bounds?.x ?? 0;
+    const maxX = targetSurface.walkableRange?.maxX ?? ((targetSurface.bounds?.x || 0) + (targetSurface.bounds?.width || 0)) ?? window.innerWidth;
+
+    const landingX = targetLandingX !== null 
+      ? Math.max(minX, Math.min(maxX, Math.round(targetLandingX)))
+      : (targetSurface.defaultX ?? Math.round((minX + maxX) / 2));
+
+    const targetCanvas = SurfaceManager.toCanvasCoords(targetSurfaceId, landingX);
+    const targetX = targetCanvas.x;
+    const targetY = targetCanvas.y;
+
+    const deltaX = targetX - startX;
+    const deltaY = targetY - startY; // Negative when jumping up
+
+    this.clearWanderTimer();
+    IdleBlink.pauseAndOverride();
+    IdleAttention.clearTimers();
+    IdleAttention.clearStateClasses();
+
+    // 1. Turning: face jump direction
+    const jumpDir = deltaX >= 0 ? 'right' : 'left';
+    if (jumpDir === 'right') {
+      picoFacer.classList.remove('facing-left');
+      picoFacer.classList.add('facing-right');
+    } else {
+      picoFacer.classList.remove('facing-right');
+      picoFacer.classList.add('facing-left');
+    }
+
+    // 2. Anticipation Crouch Phase (~130ms)
+    picoFigure.classList.remove('idle', 'walking', 'jump-air-rise', 'jump-air-fall', 'jump-land');
+    picoFigure.classList.add('jump-crouch');
+    await new Promise(r => setTimeout(r, 130));
+
+    // 3. Launch & Parabolic Arc
+    picoFigure.classList.remove('jump-crouch');
+    picoFigure.classList.add('jump-air-rise');
+
+    const duration = Math.max(420, Math.min(600, 420 + Math.abs(deltaY) * 0.5));
+    // Apex height: 22px above highest point
+    const apexExtra = 22;
+
+    const startTime = performance.now();
+
+    await new Promise((resolve) => {
+      const step = (currentTime) => {
+        const elapsed = currentTime - startTime;
+        const u = Math.min(1, elapsed / duration);
+
+        // Smooth horizontal progression (smoothstep)
+        const easeX = u * u * (3 - 2 * u);
+        const curX = startX + deltaX * easeX;
+
+        // Parabolic vertical progression
+        const curY = startY + deltaY * u - (4 * apexExtra * u * (1 - u));
+
+        this.setStagePosition(curX, curY);
+
+        if (u >= 0.52 && picoFigure.classList.contains('jump-air-rise')) {
+          picoFigure.classList.remove('jump-air-rise');
+          picoFigure.classList.add('jump-air-fall');
+        }
+
+        if (u < 1) {
+          requestAnimationFrame(step);
+        } else {
+          resolve();
+        }
+      };
+
+      requestAnimationFrame(step);
+    });
+
+    // 4. Exact Foot-Locking Arrival on Target Surface
+    this.currentSurfaceId = targetSurface.id;
+    this.minX = minX;
+    this.maxX = maxX;
+    this.setStagePosition(targetX, targetY);
+
+    // 5. Landing Impact Absorption Phase (~90ms)
+    picoFigure.classList.remove('jump-air-rise', 'jump-air-fall');
+    picoFigure.classList.add('jump-land');
+    await new Promise(r => setTimeout(r, 90));
+
+    picoFigure.classList.remove('jump-land');
+    picoFigure.classList.add('idle');
+
+    if (!isBubbleOpen) {
+      IdleBlink.resume();
+      IdleAttention.onUserDisengage(1500);
+    }
+    this.scheduleNextWander();
+
+    return this.currentX;
+  },
+
+  // Phase 3 — Step 2: Stylized Controlled Drop-Down Kinematics
+  async dropDownToSurface(targetSurfaceId, targetLandingX = null) {
+    if (this.isWalking || this.isTurning) {
+      this.stop();
+    }
+
+    const targetSurface = SurfaceManager.get(targetSurfaceId);
+    if (!targetSurface) return this.currentX;
+
+    const startX = this.currentX;
+    const startY = this.currentY || 0;
+
+    const downMinX = targetSurface.walkableRange?.minX ?? targetSurface.bounds?.x ?? 0;
+    const downMaxX = targetSurface.walkableRange?.maxX ?? ((targetSurface.bounds?.x || 0) + (targetSurface.bounds?.width || 0)) ?? window.innerWidth;
+
+    const landingX = targetLandingX !== null 
+      ? Math.max(downMinX, Math.min(downMaxX, Math.round(targetLandingX)))
+      : (targetSurface.defaultX ?? Math.round((downMinX + downMaxX) / 2));
+
+    const targetCanvas = SurfaceManager.toCanvasCoords(targetSurfaceId, landingX);
+    const targetX = targetCanvas.x;
+    const targetY = targetCanvas.y;
+
+    const deltaX = targetX - startX;
+    const deltaY = targetY - startY; // Positive when dropping down
+
+    this.clearWanderTimer();
+    IdleBlink.pauseAndOverride();
+    IdleAttention.clearTimers();
+    IdleAttention.clearStateClasses();
+
+    // 1. Ledge Hesitation & Look-Down Preparation (~180ms)
+    const dropDir = deltaX >= 0 ? 'right' : 'left';
+    if (dropDir === 'right') {
+      picoFacer.classList.remove('facing-left');
+      picoFacer.classList.add('facing-right');
+    } else {
+      picoFacer.classList.remove('facing-right');
+      picoFacer.classList.add('facing-left');
+    }
+
+    picoFigure.classList.remove('idle', 'walking', 'jump-air-rise', 'jump-air-fall', 'jump-land');
+    picoFigure.classList.add('gaze-down', 'head-down', 'jump-air-fall');
+    await new Promise(r => setTimeout(r, 180));
+
+    // 2. Accelerated Fall Trajectory
+    const duration = Math.max(360, Math.min(500, 360 + Math.abs(deltaY) * 0.35));
+    const startTime = performance.now();
+
+    await new Promise((resolve) => {
+      const step = (currentTime) => {
+        const elapsed = currentTime - startTime;
+        const u = Math.min(1, elapsed / duration);
+
+        // Forward arc
+        const curX = startX + deltaX * u;
+        // Gravity accelerated fall (u^1.4)
+        const curY = startY + deltaY * Math.pow(u, 1.4);
+
+        this.setStagePosition(curX, curY);
+
+        if (u < 1) {
+          requestAnimationFrame(step);
+        } else {
+          resolve();
+        }
+      };
+
+      requestAnimationFrame(step);
+    });
+
+    // 3. Exact Foot-Locking Arrival
+    this.currentSurfaceId = targetSurface.id;
+    this.minX = downMinX;
+    this.maxX = downMaxX;
+    this.setStagePosition(targetX, targetY);
+
+    // 4. Landing Impact Absorption (~100ms)
+    picoFigure.classList.remove('gaze-down', 'head-down', 'jump-air-fall');
+    picoFigure.classList.add('jump-land');
+    await new Promise(r => setTimeout(r, 100));
+
+    picoFigure.classList.remove('jump-land');
+    picoFigure.classList.add('idle');
+
+    if (!isBubbleOpen) {
+      IdleBlink.resume();
+      IdleAttention.onUserDisengage(1500);
+    }
+    this.scheduleNextWander();
+
+    return this.currentX;
+  },
+
+  // Multi-Surface Traversal Coordinator
+  async traverseToSurface(targetSurfaceId, targetX = null) {
+    if (this.currentSurfaceId === targetSurfaceId) {
+      if (targetX !== null) {
+        return await this.walkTo(targetX);
+      }
+      return this.currentX;
+    }
+
+    const path = SurfaceManager.findNavigationPath(
+      this.currentSurfaceId,
+      this.currentX,
+      targetSurfaceId,
+      targetX ?? 400
+    );
+
+    if (!path || path.length === 0) {
+      console.warn('No physical navigation path to surface:', targetSurfaceId);
+      return this.currentX;
+    }
+
+    for (const step of path) {
+      if (step.type === 'walk') {
+        await this.walkTo(step.toX);
+      } else if (step.transitionType === 'jump_up') {
+        await this.jumpToSurface(step.toSurfaceId, step.landingX);
+      } else if (step.transitionType === 'drop_down' || step.transitionType === 'hop_down') {
+        await this.dropDownToSurface(step.toSurfaceId, step.landingX);
+      }
+    }
+
+    if (targetX !== null) {
+      await this.walkTo(targetX);
+    }
+
+    return this.currentX;
+  },
+
   stop() {
     const wasActive = this.isWalking || this.isTurning;
     this.isWalking = false;
@@ -1306,7 +1578,10 @@ const WanderController = {
     this.clearStepAnimation();
 
     // Immediately restore clean front-facing idle standing
-    picoFigure.classList.remove('walking', 'turning-to-side', 'turning-to-front', 'turning-around');
+    picoFigure.classList.remove(
+      'walking', 'turning-to-side', 'turning-to-front', 'turning-around',
+      'jump-crouch', 'jump-air-rise', 'jump-air-fall', 'jump-land'
+    );
     picoFigure.classList.add('idle');
 
     if (!isBubbleOpen) {
@@ -1496,6 +1771,16 @@ const UserMovement = {
     // 1. Cancellation / Stop (preemption)
     if (/\b(stop|halt|wait|freeze|stay|hold on|don't move|dont move|pause)\b/.test(text)) {
       return { type: 'CANCEL', direction: null };
+    }
+
+    // 1b. Jump Up / Hop Up / Leap Up
+    if (/\b(jump up|hop up|leap up|climb up|vault up)\b/.test(text)) {
+      return { type: 'JUMP_UP', direction: null };
+    }
+
+    // 1c. Drop Down / Come Down / Hop Down / Return to taskbar
+    if (/\b(jump down|hop down|drop down|come down|step down|climb down|return to taskbar|back to taskbar|go down)\b/.test(text)) {
+      return { type: 'DROP_DOWN', direction: null };
     }
 
     // 2. Opposite Edge

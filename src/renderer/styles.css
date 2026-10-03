@@ -226,6 +226,39 @@ html, body {
   transform: rotate(2.5deg) translateY(0.8px);
 }
 
+/* ===============================================================
+   PHASE 3 — STEP 2: STYLIZED HOP & DROP KINEMATICS
+   Organic anticipation crouch, airborne stretch, and soft landing
+   =============================================================== */
+
+/* Anticipation crouch / compression before launch */
+.pico-figure.jump-crouch {
+  transform-origin: 19px 60px;
+  transform: scaleY(0.91) translateY(2px);
+  transition: transform 0.12s cubic-bezier(0.2, 0, 0.4, 1);
+}
+
+/* Airborne ascent: vertical stretch */
+.pico-figure.jump-air-rise {
+  transform-origin: 19px 60px;
+  transform: scaleY(1.06) translateY(-2px);
+  transition: transform 0.1s ease-out;
+}
+
+/* Airborne descent / fall */
+.pico-figure.jump-air-fall {
+  transform-origin: 19px 60px;
+  transform: scaleY(1.02);
+  transition: transform 0.1s ease-in;
+}
+
+/* Soft landing impact absorption / compression */
+.pico-figure.jump-land {
+  transform-origin: 19px 60px;
+  transform: scaleY(0.91) translateY(2px);
+  transition: transform 0.08s cubic-bezier(0.1, 0, 0.2, 1);
+}
+
 /* Side-facing walk frames derived from authoritative Style A character sheet */
 .side-frame {
   display: none;
