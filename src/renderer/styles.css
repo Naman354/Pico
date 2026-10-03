@@ -291,26 +291,28 @@ html, body {
 
 /* 
  * Walking State:
- * Natural, restrained, grounded posture for a bored little guy strolling on the taskbar.
- * Feet remain 100% physically locked to the taskbar baseline with 0.000px vertical drift.
- * Zero vertical bobbing or bouncing (scaleY is strictly 1.0, translateY is 0px).
- * Subtle natural weight shift is driven in lockstep with the distance-based step cycle.
+ * Stylized, cute, slightly imperfect walking motion for a bored little person casually strolling.
+ * Subtle vertical body movement (~1.2px) and weight transfer associated with individual steps.
+ * Feet remain 100% physically anchored to the taskbar baseline with 0.000px vertical drift because transform-origin is center bottom.
  */
 .pico-figure.walking {
   transform-origin: center bottom;
-  transform: skewX(-0.2deg);
+  transition: transform 0.09s ease-out;
 }
 
 .pico-figure.walking.walk-passing {
-  transform: skewX(-0.2deg);
+  /* Passing pose: supporting leg is straight, body reaches full vertical height */
+  transform: scale(1.0, 1.0) skewX(-0.1deg);
 }
 
 .pico-figure.walking.walk-step-1 {
-  transform: skewX(-0.35deg) rotate(0.2deg);
+  /* Step 1 plant: foot strikes ground, subtle weight absorption & slight forward tilt */
+  transform: scale(1.0, 0.98) skewX(-0.55deg) rotate(0.35deg);
 }
 
 .pico-figure.walking.walk-step-2 {
-  transform: skewX(-0.35deg) rotate(0.2deg);
+  /* Step 2 plant: opposite foot strikes ground, subtle weight absorption & slight forward tilt */
+  transform: scale(1.0, 0.98) skewX(-0.55deg) rotate(0.35deg);
 }
 
 /* 

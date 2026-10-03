@@ -817,18 +817,24 @@ const WanderController = {
         const dt = Math.min(0.05, (currentTime - previousTime) / 1000);
         previousTime = currentTime;
 
-        // Kinematic velocity profile:
-        let currentSpeed;
+        // Kinematic velocity profile with subtle per-step weight transfer & effort:
+        let baseSpeed;
         if (travelledDist < accelDist) {
           const p = Math.max(0, travelledDist / accelDist);
-          currentSpeed = Math.max(12, cruiseSpeed * Math.sqrt(p));
+          baseSpeed = Math.max(12, cruiseSpeed * Math.sqrt(p));
         } else if (travelledDist > absDistance - decelDist) {
           const rem = Math.max(0, absDistance - travelledDist);
           const p = Math.max(0, rem / decelDist);
-          currentSpeed = Math.max(8, cruiseSpeed * Math.sqrt(p));
+          baseSpeed = Math.max(8, cruiseSpeed * Math.sqrt(p));
         } else {
-          currentSpeed = cruiseSpeed;
+          baseSpeed = cruiseSpeed;
         }
+
+        // Natural cadence & weight transfer modulation:
+        // Decelerates slightly into foot plant (weight absorption), surges forward during push-off
+        const stepProgress = (this.accumulatedDistance % 10) / 10;
+        const strideMod = 1.0 - 0.20 * Math.cos(2 * Math.PI * stepProgress);
+        const currentSpeed = baseSpeed * strideMod;
 
         const moveDelta = currentSpeed * dt;
         travelledDist = Math.min(absDistance, travelledDist + moveDelta);
@@ -865,10 +871,23 @@ const WanderController = {
 
   updateStepAnimation() {
     if (!this.isWalking) return;
-    // Step cadence: 1 step per ~10px of translation
-    // 0: Passing (stand) -> 1: Step 1 -> 2: Passing (stand) -> 3: Step 2
-    const stepStride = 10;
-    const phase = Math.floor(this.accumulatedDistance / stepStride) % 4;
+    // Step cadence & rhythm:
+    // Full 2-step cycle is 20px (10px per single step).
+    // In each 10px step:
+    // - Initial ~4.5px is Passing (legs pass under body, body reaches full vertical height)
+    // - Next ~5.5px is Step Plant (foot strikes ground, heel of opposite foot lifts, body settles slightly with weight transfer)
+    const cycleDist = this.accumulatedDistance % 20;
+    let phase = 0;
+    if (cycleDist < 4.5) {
+      phase = 0; // Passing (before Step 1)
+    } else if (cycleDist < 10) {
+      phase = 1; // Step 1: Right foot lead plant, left foot heel lifted
+    } else if (cycleDist < 14.5) {
+      phase = 2; // Passing (before Step 2)
+    } else {
+      phase = 3; // Step 2: Left foot lead plant, right foot heel lifted
+    }
+
     if (phase === this.lastStepPhase) return;
     this.lastStepPhase = phase;
 
