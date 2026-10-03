@@ -465,6 +465,152 @@ const SurfaceManager = {
     return Array.from(this.surfaces.values());
   },
 
+  // 1. Raycasting Downward (find highest surface directly beneath x, y)
+  findSurfaceBelow(x, y) {
+    let best = null;
+    let highestElevationBelow = Infinity;
+    for (const s of this.surfaces.values()) {
+      const minX = s.walkableRange?.minX ?? s.bounds?.x ?? 0;
+      const maxX = s.walkableRange?.maxX ?? ((s.bounds?.x || 0) + (s.bounds?.width || 0)) ?? this.canvasWidth;
+      const elev = s.elevation ?? this.canvasHeight;
+      if (elev >= y - 1 && x >= minX && x <= maxX) {
+        if (elev < highestElevationBelow) {
+          highestElevationBelow = elev;
+          best = s;
+        }
+      }
+    }
+    return best;
+  },
+
+  // 2. Raycasting Upward (find lowest surface directly above x, y within maxReach)
+  findSurfaceAbove(x, y, maxReach = 350) {
+    let best = null;
+    let lowestElevationAbove = -Infinity;
+    for (const s of this.surfaces.values()) {
+      const minX = s.walkableRange?.minX ?? s.bounds?.x ?? 0;
+      const maxX = s.walkableRange?.maxX ?? ((s.bounds?.x || 0) + (s.bounds?.width || 0)) ?? this.canvasWidth;
+      const elev = s.elevation ?? this.canvasHeight;
+      if (elev < y && elev >= (y - maxReach) && x >= minX && x <= maxX) {
+        if (elev > lowestElevationAbove) {
+          lowestElevationAbove = elev;
+          best = s;
+        }
+      }
+    }
+    return best;
+  },
+
+  // 3. Ledge Proximity & Physical Boundary Metrics
+  getLedgeMetrics(surfaceId, x) {
+    const s = this.get(surfaceId) || this.getHomeSurface();
+    const minX = s?.walkableRange?.minX ?? s?.bounds?.x ?? 0;
+    const maxX = s?.walkableRange?.maxX ?? ((s?.bounds?.x || 0) + (s?.bounds?.width || 0)) ?? this.canvasWidth;
+    const distLeft = x - minX;
+    const distRight = maxX - x;
+    const leftBoundaryType = s?.leftBoundaryType ?? (s?.isHome ? 'screen_border' : 'drop_off');
+    const rightBoundaryType = s?.rightBoundaryType ?? (s?.isHome ? 'screen_border' : 'drop_off');
+
+    return {
+      distLeft,
+      distRight,
+      minDist: Math.min(distLeft, distRight),
+      nearestEdge: distLeft <= distRight ? 'left' : 'right',
+      atLeftLedge: distLeft <= 25 && leftBoundaryType === 'drop_off',
+      atRightLedge: distRight <= 25 && rightBoundaryType === 'drop_off',
+      atLeftWall: distLeft <= 5 && leftBoundaryType !== 'drop_off',
+      atRightWall: distRight <= 5 && rightBoundaryType !== 'drop_off'
+    };
+  },
+
+  // 4. Reachable Surfaces Query
+  getReachableSurfaces(fromSurfaceId, currentX, jumpLimits = { maxJumpHeight: 180, maxJumpReach: 150, maxDropHeight: 600 }) {
+    const currentSurface = this.get(fromSurfaceId) || this.getHomeSurface();
+    if (!currentSurface) return [];
+
+    const reachable = [];
+    const fromElevation = currentSurface.elevation ?? this.canvasHeight;
+
+    for (const target of this.surfaces.values()) {
+      if (target.id === fromSurfaceId) continue;
+      const targetElevation = target.elevation ?? this.canvasHeight;
+      const deltaY = fromElevation - targetElevation;
+      
+      const isUp = deltaY > 0;
+      if (isUp && deltaY > jumpLimits.maxJumpHeight) continue;
+      if (!isUp && Math.abs(deltaY) > jumpLimits.maxDropHeight) continue;
+
+      const tMin = target.walkableRange?.minX ?? target.bounds?.x ?? 0;
+      const tMax = target.walkableRange?.maxX ?? ((target.bounds?.x || 0) + (target.bounds?.width || 0)) ?? this.canvasWidth;
+
+      let horizontalDist = 0;
+      if (currentX < tMin) {
+        horizontalDist = tMin - currentX;
+      } else if (currentX > tMax) {
+        horizontalDist = currentX - tMax;
+      } else {
+        horizontalDist = 0;
+      }
+
+      if (horizontalDist <= jumpLimits.maxJumpReach) {
+        reachable.push({
+          surfaceId: target.id,
+          surface: target,
+          deltaY,
+          horizontalDist,
+          transitionType: isUp ? 'jump_up' : (horizontalDist === 0 ? 'drop_down' : 'hop_down'),
+          targetLandingX: Math.max(tMin, Math.min(tMax, currentX))
+        });
+      }
+    }
+
+    return reachable.sort((a, b) => (Math.abs(a.deltaY) + a.horizontalDist) - (Math.abs(b.deltaY) + b.horizontalDist));
+  },
+
+  // 5. Breadth-First Topological Pathfinding Across Surface Graph
+  findNavigationPath(fromSurfaceId, fromX, targetSurfaceId, targetX, jumpLimits = { maxJumpHeight: 180, maxJumpReach: 150, maxDropHeight: 600 }) {
+    if (fromSurfaceId === targetSurfaceId) {
+      return [{
+        type: 'walk',
+        surfaceId: fromSurfaceId,
+        fromX,
+        toX: targetX
+      }];
+    }
+
+    const queue = [[fromSurfaceId, []]];
+    const visited = new Set([fromSurfaceId]);
+
+    while (queue.length > 0) {
+      const [currentId, path] = queue.shift();
+      const currentSurf = this.get(currentId);
+      const estX = path.length === 0 ? fromX : (currentSurf?.defaultX ?? 200);
+      const neighbors = this.getReachableSurfaces(currentId, estX, jumpLimits);
+
+      for (const edge of neighbors) {
+        const nextId = edge.surface.id;
+        const newPath = [...path, {
+          fromSurfaceId: currentId,
+          toSurfaceId: nextId,
+          transitionType: edge.transitionType,
+          deltaY: edge.deltaY,
+          landingX: edge.targetLandingX
+        }];
+
+        if (nextId === targetSurfaceId) {
+          return newPath;
+        }
+
+        if (!visited.has(nextId)) {
+          visited.add(nextId);
+          queue.push([nextId, newPath]);
+        }
+      }
+    }
+
+    return null;
+  },
+
   // Converts local X along a surface into stage translate coordinates { x, y }
   // y = 0 represents the baseline taskbar ledge (grounded at bottom: 1px)
   toCanvasCoords(surfaceId, localX) {
@@ -487,20 +633,240 @@ const SurfaceManager = {
 
 window.SurfaceManager = SurfaceManager;
 
+// Ledge Awareness & Edge Micro-Reactions (Phase 3 — Step 1)
+const LedgeAwareness = {
+  isReacting: false,
+  lastReaction: null,
+
+  assessEdge(surfaceId, x) {
+    const surface = SurfaceManager.get(surfaceId) || SurfaceManager.getActiveSurface();
+    if (!surface) {
+      return {
+        atEdge: false,
+        edgeType: 'none',
+        side: null,
+        distance: Infinity,
+        surfaceId: null,
+        isPossibleTraversalPoint: false
+      };
+    }
+
+    const minX = surface.walkableRange?.minX ?? surface.bounds?.x ?? 0;
+    const maxX = surface.walkableRange?.maxX ?? ((surface.bounds?.x || 0) + (surface.bounds?.width || 0)) ?? window.innerWidth;
+    const distLeft = x - minX;
+    const distRight = maxX - x;
+
+    const EDGE_THRESHOLD = 25; // px from physical edge
+    const atLeft = distLeft <= EDGE_THRESHOLD;
+    const atRight = distRight <= EDGE_THRESHOLD;
+
+    if (!atLeft && !atRight) {
+      return {
+        atEdge: false,
+        edgeType: 'none',
+        side: null,
+        distance: Math.min(distLeft, distRight),
+        surfaceId: surface.id,
+        isPossibleTraversalPoint: false
+      };
+    }
+
+    const side = distLeft <= distRight ? 'left' : 'right';
+    const distance = side === 'left' ? distLeft : distRight;
+
+    // Check boundary type of this side
+    const rawBoundaryType = side === 'left'
+      ? (surface.leftBoundaryType || (surface.isHome ? 'screen_border' : 'drop_off'))
+      : (surface.rightBoundaryType || (surface.isHome ? 'screen_border' : 'drop_off'));
+
+    // Check if there is a reachable connected surface below or above within immediate edge traversal reach
+    const reachable = SurfaceManager.getReachableSurfaces(surface.id, x, {
+      maxJumpHeight: 180,
+      maxJumpReach: 60, // directly accessible from this edge
+      maxDropHeight: 180 // immediate step/hop down rather than a sheer drop
+    });
+
+    // If there is a reachable surface in the vicinity, treat as potential traversal point!
+    if (reachable && reachable.length > 0) {
+      const topTarget = reachable[0];
+      return {
+        atEdge: true,
+        edgeType: 'potential_traversal',
+        side,
+        distance,
+        surfaceId: surface.id,
+        boundaryType: rawBoundaryType,
+        connectedSurface: topTarget.surface,
+        connectedSurfaceId: topTarget.surfaceId,
+        transitionType: topTarget.transitionType,
+        deltaY: topTarget.deltaY,
+        targetLandingX: topTarget.targetLandingX,
+        isPossibleTraversalPoint: true
+      };
+    }
+
+    // If boundary is screen_border, treat separately (screen edge for eventual off-screen departure)
+    if (rawBoundaryType === 'screen_border') {
+      return {
+        atEdge: true,
+        edgeType: 'screen_edge',
+        side,
+        distance,
+        surfaceId: surface.id,
+        boundaryType: 'screen_border',
+        connectedSurface: null,
+        isPossibleTraversalPoint: false
+      };
+    }
+
+    // Otherwise, it is a surface endpoint / drop-off
+    return {
+      atEdge: true,
+      edgeType: 'drop_off',
+      side,
+      distance,
+      surfaceId: surface.id,
+      boundaryType: rawBoundaryType,
+      connectedSurface: null,
+      isPossibleTraversalPoint: false
+    };
+  },
+
+  applyReaction(assessment) {
+    if (!picoFigure) return;
+    this.isReacting = true;
+    this.lastReaction = assessment;
+
+    const side = assessment.side;
+    this.clearReactionClasses();
+
+    if (assessment.edgeType === 'drop_off') {
+      // 1. Surface Endpoint Drop-Off:
+      // Brief hesitation pause, small downward glance/lean over the ledge
+      picoFigure.classList.add('gaze-down', 'head-down', 'ledge-peering');
+      if (side === 'right') {
+        picoFigure.classList.add('ledge-lean-right');
+      } else {
+        picoFigure.classList.add('ledge-lean-left');
+      }
+    } else if (assessment.edgeType === 'screen_edge') {
+      // 2. Screen Edge:
+      // Calm, outward glance looking past the screen edge (anticipating future off-screen traversal)
+      if (side === 'right') {
+        picoFigure.classList.add('gaze-right', 'screen-edge-peeking-right');
+      } else {
+        picoFigure.classList.add('gaze-left', 'screen-edge-peeking-left');
+      }
+    } else if (assessment.edgeType === 'potential_traversal') {
+      // 3. Potential Connected Surface Below / Above:
+      // Recognizes viable traversal route; curious upward or downward scope
+      if (assessment.transitionType === 'jump_up') {
+        picoFigure.classList.add('traversal-scoping-up');
+      } else {
+        picoFigure.classList.add('gaze-down', 'traversal-scoping-down');
+      }
+    }
+  },
+
+  clearReactionClasses() {
+    if (!picoFigure) return;
+    picoFigure.classList.remove(
+      'gaze-left', 'gaze-right', 'gaze-down',
+      'head-down', 'head-tilt',
+      'ledge-peering', 'ledge-lean-left', 'ledge-lean-right',
+      'screen-edge-peeking-left', 'screen-edge-peeking-right',
+      'traversal-scoping-up', 'traversal-scoping-down'
+    );
+  },
+
+  async triggerReaction(assessment) {
+    if (this.isReacting || !picoFigure) return;
+    this.applyReaction(assessment);
+
+    const duration = assessment.edgeType === 'drop_off' ? 500 : (assessment.edgeType === 'screen_edge' ? 450 : 500);
+    await new Promise(r => setTimeout(r, duration));
+
+    this.clearReactionClasses();
+    this.isReacting = false;
+  }
+};
+
+window.LedgeAwareness = LedgeAwareness;
+
+// Physical World Coordinator (Phase 3 Foundation)
+const PhysicsWorld = {
+  getSurfaces() {
+    return SurfaceManager.getAllSurfaces();
+  },
+  getSurface(id) {
+    return SurfaceManager.get(id);
+  },
+  getActiveSurface() {
+    return SurfaceManager.getActiveSurface();
+  },
+  findSurfaceBelow(x, y) {
+    return SurfaceManager.findSurfaceBelow(x, y);
+  },
+  findSurfaceAbove(x, y, maxReach) {
+    return SurfaceManager.findSurfaceAbove(x, y, maxReach);
+  },
+  getLedgeMetrics(surfaceId, x) {
+    return SurfaceManager.getLedgeMetrics(surfaceId, x);
+  },
+  getReachableSurfaces(surfaceId, currentX, jumpLimits) {
+    return SurfaceManager.getReachableSurfaces(surfaceId, currentX, jumpLimits);
+  },
+  findNavigationPath(fromSurfaceId, fromX, targetSurfaceId, targetX, jumpLimits) {
+    return SurfaceManager.findNavigationPath(fromSurfaceId, fromX, targetSurfaceId, targetX, jumpLimits);
+  },
+  getPhysicalState() {
+    const surface = SurfaceManager.getActiveSurface();
+    const currentX = WanderController.currentX;
+    const canvasCoords = SurfaceManager.toCanvasCoords(WanderController.currentSurfaceId, currentX);
+    const ledgeMetrics = SurfaceManager.getLedgeMetrics(WanderController.currentSurfaceId, currentX);
+    const edgeAssessment = LedgeAwareness.assessEdge(WanderController.currentSurfaceId, currentX);
+
+    return {
+      isGrounded: true,
+      surfaceId: WanderController.currentSurfaceId,
+      surfaceType: surface?.type ?? 'taskbar',
+      surfaceLabel: surface?.label ?? 'Windows Taskbar',
+      localX: currentX,
+      canvasX: canvasCoords.x,
+      canvasY: canvasCoords.y,
+      elevation: surface?.elevation ?? window.innerHeight,
+      isHome: surface?.isHome ?? true,
+      footDrift: 0,
+      footprint: { width: 38, height: 60 },
+      ledge: ledgeMetrics,
+      edgeAssessment,
+      isPossibleTraversalPoint: edgeAssessment.isPossibleTraversalPoint || false,
+      potentialTraversal: edgeAssessment.edgeType === 'potential_traversal' ? {
+        connectedSurfaceId: edgeAssessment.connectedSurfaceId,
+        transitionType: edgeAssessment.transitionType,
+        deltaY: edgeAssessment.deltaY
+      } : null
+    };
+  }
+};
+
+window.PhysicsWorld = PhysicsWorld;
+
 // World Coordinates Inspector
 window.getPicoWorldCoords = () => {
-  const surface = SurfaceManager.getActiveSurface();
-  const canvasCoords = SurfaceManager.toCanvasCoords(WanderController.currentSurfaceId, WanderController.currentX);
+  const state = PhysicsWorld.getPhysicalState();
   return {
-    surfaceId: WanderController.currentSurfaceId,
-    surfaceType: surface?.type ?? 'taskbar',
-    surfaceLabel: surface?.label ?? 'Windows Taskbar',
-    localX: WanderController.currentX,
-    canvasX: canvasCoords.x,
-    canvasY: canvasCoords.y,
-    elevation: surface?.elevation ?? window.innerHeight,
-    isHome: surface?.isHome ?? true,
-    footDrift: 0
+    surfaceId: state.surfaceId,
+    surfaceType: state.surfaceType,
+    surfaceLabel: state.surfaceLabel,
+    localX: state.localX,
+    canvasX: state.canvasX,
+    canvasY: state.canvasY,
+    elevation: state.elevation,
+    isHome: state.isHome,
+    footDrift: state.footDrift,
+    ledge: state.ledge,
+    edgeAssessment: state.edgeAssessment
   };
 };
 
@@ -657,10 +1023,16 @@ const WanderController = {
     if (this.isWalking || this.isTurning || isBubbleOpen || CharacterActions.isBusy() || UserMovement.isMovingFromUser) return;
 
     let dir = Math.random() < 0.5 ? 'left' : 'right';
-    if (this.currentX - 80 < this.minX) {
-      dir = 'right';
-    } else if (this.currentX + 80 > this.maxX) {
-      dir = 'left';
+    const edge = LedgeAwareness.assessEdge(this.currentSurfaceId, this.currentX);
+    if (edge.atEdge) {
+      if (edge.side === 'left') dir = 'right';
+      else if (edge.side === 'right') dir = 'left';
+    } else {
+      if (this.currentX - 80 < this.minX) {
+        dir = 'right';
+      } else if (this.currentX + 80 > this.maxX) {
+        dir = 'left';
+      }
     }
 
     const goalType = Math.random() < 0.3 ? 'MEDIUM' : 'SHORT';
@@ -854,6 +1226,12 @@ const WanderController = {
 
           // Transition back to front-facing idle stance
           await this.turnToFront();
+
+          // Edge micro-reaction on arrival near any boundary
+          const edgeAssessment = LedgeAwareness.assessEdge(this.currentSurfaceId, this.currentX);
+          if (edgeAssessment.atEdge && !isBubbleOpen && !CharacterActions.isBusy()) {
+            await LedgeAwareness.triggerReaction(edgeAssessment);
+          }
 
           if (!isBubbleOpen) {
             IdleBlink.resume();

@@ -187,6 +187,45 @@ html, body {
   transform: rotate(0.6deg) skewX(-0.4deg);
 }
 
+/* ===============================================================
+   PHASE 3 — STEP 1: LEDGE AWARENESS & MICRO-REACTIONS
+   Subtle, characterful edge reactions preserving 0.000px foot drift
+   =============================================================== */
+
+/* 1. Surface Endpoint Drop-Off: subtle downward glance and lean over ledge */
+.pico-figure.ledge-peering .pico-head {
+  transform: rotate(3deg) translateY(1.2px);
+}
+
+.pico-figure.ledge-lean-right {
+  transform-origin: 19px 60px; /* Feet stay grounded at 0px drift */
+  transform: rotate(2deg) skewX(0.8deg);
+}
+
+.pico-figure.ledge-lean-left {
+  transform-origin: 19px 60px;
+  transform: rotate(-2deg) skewX(-0.8deg);
+}
+
+/* 2. Screen Edge Awareness: looking outward beyond the monitor border */
+.pico-figure.screen-edge-peeking-right .pico-head {
+  transform: rotate(4deg);
+}
+
+.pico-figure.screen-edge-peeking-left .pico-head {
+  transform: rotate(-4deg);
+}
+
+/* 3. Potential Traversal Point: curious upward glance when a ledge is overhead */
+.pico-figure.traversal-scoping-up .pico-head {
+  transform: rotate(-6deg) translateY(-1px);
+}
+
+/* Traversal scoping down: subtle focused downward gaze */
+.pico-figure.traversal-scoping-down .pico-head {
+  transform: rotate(2.5deg) translateY(0.8px);
+}
+
 /* Side-facing walk frames derived from authoritative Style A character sheet */
 .side-frame {
   display: none;

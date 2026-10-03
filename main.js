@@ -77,6 +77,18 @@ function createWindow() {
     return surfaceManager.getSurface(id);
   });
 
+  ipcMain.handle('get-surface-below', (_event, x, y) => {
+    return surfaceManager.findSurfaceBelow(x, y);
+  });
+
+  ipcMain.handle('get-reachable-surfaces', (_event, surfaceId, x, jumpLimits) => {
+    return surfaceManager.getReachableSurfaces(surfaceId, x, jumpLimits);
+  });
+
+  ipcMain.handle('find-navigation-path', (_event, fromId, fromX, toId, toX, jumpLimits) => {
+    return surfaceManager.findNavigationPath(fromId, fromX, toId, toX, jumpLimits);
+  });
+
   // Toggle DevTools with Ctrl+Shift+I in development
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.control && input.shift && input.key.toLowerCase() === 'i') {
