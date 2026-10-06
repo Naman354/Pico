@@ -104,6 +104,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   surfaceManager.initPrimaryDisplaySurfaces();
+  surfaceManager.initLiveElevatedShelf();
   createWindow();
 
   app.on('activate', () => {

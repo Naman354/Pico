@@ -272,6 +272,43 @@ class SurfaceManager {
     this.activeSurfaceId = 'taskbar-main';
     return taskbarSurface;
   }
+
+  initLiveElevatedShelf() {
+    const display = screen.getPrimaryDisplay();
+    const { bounds, workArea } = display;
+    let ledgeY = workArea.y + workArea.height;
+    if (workArea.y > bounds.y) {
+      ledgeY = workArea.y;
+    }
+
+    const PICO_WIDTH = 38;
+    const shelfX = Math.round(workArea.width * 0.45);
+    const shelfWidth = Math.round(workArea.width * 0.42);
+
+    const testShelf = new Surface({
+      id: 'elevated-test-shelf',
+      type: 'app_shelf',
+      label: 'Desktop Test Shelf',
+      bounds: {
+        x: shelfX,
+        y: ledgeY - 110,
+        width: shelfWidth,
+        height: 24
+      },
+      walkableRange: {
+        minX: shelfX,
+        maxX: shelfX + shelfWidth - PICO_WIDTH
+      },
+      elevation: ledgeY - 110,
+      isHome: false,
+      defaultX: Math.round(shelfX + shelfWidth / 2),
+      leftBoundaryType: 'drop_off',
+      rightBoundaryType: 'drop_off'
+    });
+
+    this.registerSurface(testShelf);
+    return testShelf;
+  }
 }
 
 /**

@@ -422,6 +422,7 @@ const SurfaceManager = {
     }
     this.activeSurfaceId = initialSurfaceId;
     this.updateDimensions();
+    this.updateVisualShelf();
   },
 
   updateDimensions() {
@@ -429,9 +430,34 @@ const SurfaceManager = {
     this.canvasHeight = window.innerHeight;
   },
 
+  updateVisualShelf() {
+    const shelfVisual = document.getElementById('elevated-shelf-visual');
+    const elevatedShelf = this.get('elevated-test-shelf');
+    if (!shelfVisual) return;
+
+    if (elevatedShelf) {
+      const taskbar = this.getHomeSurface();
+      const taskbarElev = taskbar?.elevation ?? window.innerHeight;
+      const deltaY = taskbarElev - elevatedShelf.elevation;
+      const shelfTopFromBottom = 1 + deltaY;
+      const shelfLeft = elevatedShelf.bounds.x;
+      const shelfWidth = elevatedShelf.bounds.width;
+
+      // Position so the top surface of the 10px glass bar aligns exactly with Pico's shoe soles (1 + deltaY)
+      shelfVisual.style.bottom = `${shelfTopFromBottom - 32}px`;
+      shelfVisual.style.left = `${shelfLeft}px`;
+      shelfVisual.style.width = `${shelfWidth}px`;
+      shelfVisual.style.height = `32px`;
+      shelfVisual.classList.add('active');
+    } else {
+      shelfVisual.classList.remove('active');
+    }
+  },
+
   register(surface) {
     if (!surface || !surface.id) return;
     this.surfaces.set(surface.id, surface);
+    this.updateVisualShelf();
   },
 
   unregister(id) {
