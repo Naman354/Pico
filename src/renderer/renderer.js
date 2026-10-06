@@ -432,10 +432,12 @@ const SurfaceManager = {
 
   updateVisualShelf() {
     const shelfVisual = document.getElementById('elevated-shelf-visual');
-    const elevatedShelf = this.get('elevated-test-shelf');
     if (!shelfVisual) return;
 
-    if (elevatedShelf) {
+    const isDebugActive = Boolean(window.DEBUG_SURFACES || document.body.classList.contains('debug-surfaces'));
+    const elevatedShelf = this.get('elevated-test-shelf');
+
+    if (isDebugActive && elevatedShelf) {
       const taskbar = this.getHomeSurface();
       const taskbarElev = taskbar?.elevation ?? window.innerHeight;
       const deltaY = taskbarElev - elevatedShelf.elevation;
@@ -443,7 +445,7 @@ const SurfaceManager = {
       const shelfLeft = elevatedShelf.bounds.x;
       const shelfWidth = elevatedShelf.bounds.width;
 
-      // Position so the top surface of the 10px glass bar aligns exactly with Pico's shoe soles (1 + deltaY)
+      // Position so the top surface of the glass bar aligns with Pico's shoe soles (1 + deltaY)
       shelfVisual.style.bottom = `${shelfTopFromBottom - 32}px`;
       shelfVisual.style.left = `${shelfLeft}px`;
       shelfVisual.style.width = `${shelfWidth}px`;
@@ -1017,36 +1019,178 @@ const WanderController = {
       this.stop();
     }
 
-    // Hop Up / Jump Up goal
-    if (goal.type === 'JUMP_UP') {
-      const reachable = SurfaceManager.getReachableSurfaces(this.currentSurfaceId, this.currentX, {
-        maxJumpHeight: 180,
-        maxJumpReach: 150,
-        maxDropHeight: 180
+    // Hop Up / Jump Up / Ledge Above Goals
+    if (goal.type === 'JUMP_UP' || goal.type === 'JUMP_LEDGE_ABOVE') {
+      const currentSurface = SurfaceManager.get(this.currentSurfaceId) || SurfaceManager.getActiveSurface();
+      const currentElevation = currentSurface?.elevation ?? window.innerHeight;
+
+      // 1. Identify candidate elevated surfaces
+      const allSurfaces = SurfaceManager.getAllSurfaces();
+      const elevatedSurfaces = allSurfaces.filter(s => {
+        if (s.id === this.currentSurfaceId) return false;
+        const targetElev = s.elevation ?? window.innerHeight;
+        const deltaY = currentElevation - targetElev;
+        return deltaY > 15; // Higher than current
       });
-      const upTarget = reachable.find(r => r.transitionType === 'jump_up');
-      if (upTarget) {
-        return await this.jumpToSurface(upTarget.surfaceId, upTarget.targetLandingX);
+
+      if (elevatedSurfaces.length === 0) {
+        // No valid target surface above: gracefully stay grounded
+        await this.performCuriousGlance('up');
+        return this.currentX;
       }
-      return this.currentX;
+
+      let selectedSurface = null;
+
+      if (goal.directlyAbove) {
+        // Explicitly target surface directly overhead
+        const directlyAboveSurface = SurfaceManager.findSurfaceAbove(this.currentX, currentElevation, 320);
+        if (directlyAboveSurface) {
+          selectedSurface = directlyAboveSurface;
+        } else {
+          selectedSurface = elevatedSurfaces.reduce((best, s) => {
+            const dist = Math.abs(this.currentX - (s.defaultX ?? s.bounds?.x ?? 0));
+            const bestDist = Math.abs(this.currentX - (best.defaultX ?? best.bounds?.x ?? 0));
+            return dist < bestDist ? s : best;
+          }, elevatedSurfaces[0]);
+        }
+      } else {
+        // Choose suitable reachable surface above Pico
+        const reachable = SurfaceManager.getReachableSurfaces(this.currentSurfaceId, this.currentX, {
+          maxJumpHeight: 180,
+          maxJumpReach: 160,
+          maxDropHeight: 180
+        });
+        const upTarget = reachable.find(r => r.transitionType === 'jump_up' && r.deltaY > 15);
+        if (upTarget) {
+          selectedSurface = upTarget.surface;
+        } else {
+          selectedSurface = elevatedSurfaces[0];
+        }
+      }
+
+      if (!selectedSurface) {
+        await this.performCuriousGlance('up');
+        return this.currentX;
+      }
+
+      const targetMinX = selectedSurface.walkableRange?.minX ?? selectedSurface.bounds?.x ?? 0;
+      const targetMaxX = selectedSurface.walkableRange?.maxX ?? ((selectedSurface.bounds?.x || 0) + (selectedSurface.bounds?.width || 0)) ?? window.innerWidth;
+      const targetLandingX = Math.max(targetMinX, Math.min(targetMaxX, this.currentX));
+
+      // Walk into jump range if horizontal distance is too far
+      const horizontalDist = this.currentX < targetMinX 
+        ? targetMinX - this.currentX 
+        : (this.currentX > targetMaxX ? this.currentX - targetMaxX : 0);
+
+      if (horizontalDist > 60) {
+        const approachX = this.currentX < targetMinX ? targetMinX : targetMaxX;
+        await this.walkTo(approachX, 36);
+      }
+
+      // Orient toward target
+      const jumpDir = targetLandingX >= this.currentX ? 'right' : 'left';
+      if (this.currentFacing !== jumpDir) {
+        await this.turnToSide(jumpDir);
+      }
+
+      return await this.jumpToSurface(selectedSurface.id, targetLandingX);
     }
 
-    // Drop Down / Jump Down / Come Down goal
+    // Jump to the other ledge
+    if (goal.type === 'JUMP_OTHER_LEDGE') {
+      const currentSurface = SurfaceManager.get(this.currentSurfaceId) || SurfaceManager.getActiveSurface();
+      const allSurfaces = SurfaceManager.getAllSurfaces();
+
+      // Find other valid surfaces (excluding current)
+      let otherSurfaces = allSurfaces.filter(s => s.id !== this.currentSurfaceId);
+
+      // If currently on an elevated ledge, prioritize other non-home ledges
+      if (!currentSurface?.isHome && otherSurfaces.some(s => !s.isHome)) {
+        otherSurfaces = otherSurfaces.filter(s => !s.isHome);
+      }
+
+      if (otherSurfaces.length === 0) {
+        // No other ledge exists: gracefully stay grounded
+        await this.performCuriousGlance('side');
+        return this.currentX;
+      }
+
+      // Select nearest other ledge
+      const targetSurface = otherSurfaces.reduce((best, s) => {
+        const dist = Math.abs(this.currentX - (s.defaultX ?? s.bounds?.x ?? 0));
+        const bestDist = Math.abs(this.currentX - (best.defaultX ?? best.bounds?.x ?? 0));
+        return dist < bestDist ? s : best;
+      }, otherSurfaces[0]);
+
+      const targetMinX = targetSurface.walkableRange?.minX ?? targetSurface.bounds?.x ?? 0;
+      const targetMaxX = targetSurface.walkableRange?.maxX ?? ((targetSurface.bounds?.x || 0) + (targetSurface.bounds?.width || 0)) ?? window.innerWidth;
+
+      const currentMinX = currentSurface?.walkableRange?.minX ?? this.minX;
+      const currentMaxX = currentSurface?.walkableRange?.maxX ?? this.maxX;
+
+      const isTargetToRight = targetMinX > currentMaxX;
+      const isTargetToLeft = targetMaxX < currentMinX;
+
+      let targetLandingX = targetSurface.defaultX ?? Math.round((targetMinX + targetMaxX) / 2);
+
+      if (isTargetToRight) {
+        const launchEdgeX = currentMaxX;
+        if (Math.abs(this.currentX - launchEdgeX) > 10) {
+          await this.walkTo(launchEdgeX, 36);
+        }
+        targetLandingX = targetMinX + 15;
+      } else if (isTargetToLeft) {
+        const launchEdgeX = currentMinX;
+        if (Math.abs(this.currentX - launchEdgeX) > 10) {
+          await this.walkTo(launchEdgeX, 36);
+        }
+        targetLandingX = targetMaxX - 15;
+      }
+
+      // Orient toward target
+      const jumpDir = isTargetToRight ? 'right' : (isTargetToLeft ? 'left' : (targetLandingX >= this.currentX ? 'right' : 'left'));
+      if (this.currentFacing !== jumpDir) {
+        await this.turnToSide(jumpDir);
+      }
+
+      const currentElev = currentSurface?.elevation ?? window.innerHeight;
+      const targetElev = targetSurface?.elevation ?? window.innerHeight;
+      const deltaY = currentElev - targetElev;
+
+      if (deltaY < -40) {
+        return await this.dropDownToSurface(targetSurface.id, targetLandingX);
+      } else {
+        return await this.jumpToSurface(targetSurface.id, targetLandingX);
+      }
+    }
+
+    // Drop Down / Jump Down / Come Down / Return to taskbar
     if (goal.type === 'DROP_DOWN') {
-      const reachable = SurfaceManager.getReachableSurfaces(this.currentSurfaceId, this.currentX, {
-        maxJumpHeight: 180,
-        maxJumpReach: 150,
-        maxDropHeight: 600
-      });
-      const downTarget = reachable.find(r => r.transitionType === 'drop_down' || r.transitionType === 'hop_down');
-      if (downTarget) {
-        return await this.dropDownToSurface(downTarget.surfaceId, downTarget.targetLandingX);
+      const currentSurface = SurfaceManager.get(this.currentSurfaceId) || SurfaceManager.getActiveSurface();
+      const homeSurface = SurfaceManager.getHomeSurface();
+
+      if (currentSurface?.isHome || this.currentSurfaceId === 'taskbar-main') {
+        // Already on taskbar: gracefully remain grounded
+        await this.performCuriousGlance('down');
+        return this.currentX;
       }
-      const home = SurfaceManager.getHomeSurface();
-      if (home && this.currentSurfaceId !== home.id) {
-        return await this.dropDownToSurface(home.id, this.currentX);
+
+      const surfaceBelow = SurfaceManager.findSurfaceBelow(this.currentX, (currentSurface?.elevation ?? 0) + 10);
+      const targetSurface = surfaceBelow || homeSurface;
+
+      if (!targetSurface) {
+        await this.performCuriousGlance('down');
+        return this.currentX;
       }
-      return this.currentX;
+
+      const landingX = this.currentX;
+
+      const dropDir = this.currentFacing === 'front' ? 'right' : this.currentFacing;
+      if (this.currentFacing !== dropDir) {
+        await this.turnToSide(dropDir);
+      }
+
+      return await this.dropDownToSurface(targetSurface.id, landingX);
     }
 
     const surface = SurfaceManager.get(goal.surfaceId || this.currentSurfaceId) || SurfaceManager.getActiveSurface();
@@ -1059,6 +1203,26 @@ const WanderController = {
     const resultX = await this.walkTo(targetX, 36);
     this.currentGoal = null;
     return resultX;
+  },
+
+  async performCuriousGlance(type = 'up') {
+    IdleBlink.pauseAndOverride();
+    IdleAttention.clearTimers();
+    IdleAttention.clearStateClasses();
+
+    if (type === 'up') {
+      picoFigure.classList.add('gaze-up', 'head-up');
+    } else if (type === 'down') {
+      picoFigure.classList.add('gaze-down', 'head-down');
+    } else {
+      picoFigure.classList.add('head-tilt');
+    }
+
+    await new Promise(r => setTimeout(r, 450));
+
+    IdleAttention.clearStateClasses();
+    picoFigure.classList.add('idle');
+    IdleBlink.resume();
   },
 
   maybeWander() {
@@ -1351,7 +1515,7 @@ const WanderController = {
     this.clearStepAnimation();
   },
 
-  // Phase 3 — Step 2: Stylized Hop Kinematics (Jump Up to Higher Ledge)
+  // Phase 3 — Step 2 & 3A: Physical Articulated Hop Kinematics (Jump Up to Higher Ledge)
   async jumpToSurface(targetSurfaceId, targetLandingX = null) {
     if (this.isWalking || this.isTurning) {
       this.stop();
@@ -1382,29 +1546,30 @@ const WanderController = {
     IdleAttention.clearTimers();
     IdleAttention.clearStateClasses();
 
-    // 1. Turning: face jump direction
+    // 1. Orient toward target ledge
     const jumpDir = deltaX >= 0 ? 'right' : 'left';
-    if (jumpDir === 'right') {
-      picoFacer.classList.remove('facing-left');
-      picoFacer.classList.add('facing-right');
-    } else {
-      picoFacer.classList.remove('facing-right');
-      picoFacer.classList.add('facing-left');
+    if (this.currentFacing !== jumpDir) {
+      await this.turnToSide(jumpDir);
     }
 
-    // 2. Anticipation Crouch Phase (~130ms)
-    picoFigure.classList.remove('idle', 'walking', 'jump-air-rise', 'jump-air-fall', 'jump-land');
-    picoFigure.classList.add('jump-crouch');
-    await new Promise(r => setTimeout(r, 130));
+    // 2. Preparation: Small crouch/compression with planted feet (~140ms)
+    // Feet remain planted flat on source surface (0px drift), knees bend, body lowers
+    picoFigure.classList.remove('idle', 'walking', 'jumping', 'jump-phase-crouch', 'jump-phase-launch', 'jump-phase-air', 'jump-phase-descend', 'jump-phase-land', 'jump-crouch', 'jump-air-rise', 'jump-air-fall', 'jump-land');
+    picoFigure.classList.add('jumping', 'jump-phase-crouch', 'jump-crouch');
+    await new Promise(r => setTimeout(r, 140));
 
-    // 3. Launch & Parabolic Arc
-    picoFigure.classList.remove('jump-crouch');
-    picoFigure.classList.add('jump-air-rise');
+    // 3. Push-off: Body visibly extends upward/outward; toes push off surface (~70ms)
+    picoFigure.classList.remove('jump-phase-crouch', 'jump-crouch');
+    picoFigure.classList.add('jump-phase-launch', 'jump-air-rise');
+    this.setStagePosition(startX, startY - 3); // initial upward impulse
+    await new Promise(r => setTimeout(r, 70));
 
-    const duration = Math.max(420, Math.min(600, 420 + Math.abs(deltaY) * 0.5));
-    // Apex height: 22px above highest point
-    const apexExtra = 22;
+    // 4. Airborne Phase: Tucked legs, smooth parabolic flight
+    picoFigure.classList.remove('jump-phase-launch');
+    picoFigure.classList.add('jump-phase-air');
 
+    const duration = Math.max(450, Math.min(620, 450 + Math.abs(deltaY) * 0.45));
+    const apexExtra = 26; // 26px clear parabolic arc
     const startTime = performance.now();
 
     await new Promise((resolve) => {
@@ -1416,14 +1581,16 @@ const WanderController = {
         const easeX = u * u * (3 - 2 * u);
         const curX = startX + deltaX * easeX;
 
-        // Parabolic vertical progression
+        // Parabolic vertical trajectory
         const curY = startY + deltaY * u - (4 * apexExtra * u * (1 - u));
 
         this.setStagePosition(curX, curY);
 
-        if (u >= 0.52 && picoFigure.classList.contains('jump-air-rise')) {
-          picoFigure.classList.remove('jump-air-rise');
-          picoFigure.classList.add('jump-air-fall');
+        // 5. Descent Phase: Shortly before reaching target (u >= 0.76), prepare for landing
+        // Legs extend downward toward target surface, body straightens upright
+        if (u >= 0.76 && picoFigure.classList.contains('jump-phase-air')) {
+          picoFigure.classList.remove('jump-phase-air', 'jump-air-rise');
+          picoFigure.classList.add('jump-phase-descend', 'jump-air-fall');
         }
 
         if (u < 1) {
@@ -1436,18 +1603,20 @@ const WanderController = {
       requestAnimationFrame(step);
     });
 
-    // 4. Exact Foot-Locking Arrival on Target Surface
+    // 6. Touchdown & Soft Landing Impact Absorption (~110ms)
+    // Feet make contact with target surface, knees softly compress
     this.currentSurfaceId = targetSurface.id;
     this.minX = minX;
     this.maxX = maxX;
     this.setStagePosition(targetX, targetY);
 
-    // 5. Landing Impact Absorption Phase (~90ms)
-    picoFigure.classList.remove('jump-air-rise', 'jump-air-fall');
-    picoFigure.classList.add('jump-land');
-    await new Promise(r => setTimeout(r, 90));
+    picoFigure.classList.remove('jump-phase-descend', 'jump-air-fall');
+    picoFigure.classList.add('jump-phase-land', 'jump-land');
+    await new Promise(r => setTimeout(r, 110));
 
-    picoFigure.classList.remove('jump-land');
+    // 7. Stabilize and Return to Grounded Idle on Target Surface
+    picoFigure.classList.remove('jumping', 'jump-phase-land', 'jump-land');
+    await this.turnToFront();
     picoFigure.classList.add('idle');
 
     if (!isBubbleOpen) {
@@ -1459,7 +1628,7 @@ const WanderController = {
     return this.currentX;
   },
 
-  // Phase 3 — Step 2: Stylized Controlled Drop-Down Kinematics
+  // Phase 3 — Step 2 & 3A: Physical Articulated Controlled Drop-Down Kinematics
   async dropDownToSurface(targetSurfaceId, targetLandingX = null) {
     if (this.isWalking || this.isTurning) {
       this.stop();
@@ -1490,22 +1659,26 @@ const WanderController = {
     IdleAttention.clearTimers();
     IdleAttention.clearStateClasses();
 
-    // 1. Ledge Hesitation & Look-Down Preparation (~180ms)
+    // 1. Turning & Ledge Hesitation / Look-Down (~160ms)
     const dropDir = deltaX >= 0 ? 'right' : 'left';
-    if (dropDir === 'right') {
-      picoFacer.classList.remove('facing-left');
-      picoFacer.classList.add('facing-right');
-    } else {
-      picoFacer.classList.remove('facing-right');
-      picoFacer.classList.add('facing-left');
+    if (this.currentFacing !== dropDir) {
+      await this.turnToSide(dropDir);
     }
 
-    picoFigure.classList.remove('idle', 'walking', 'jump-air-rise', 'jump-air-fall', 'jump-land');
-    picoFigure.classList.add('gaze-down', 'head-down', 'jump-air-fall');
-    await new Promise(r => setTimeout(r, 180));
+    picoFigure.classList.remove('idle', 'walking', 'jumping', 'jump-phase-crouch', 'jump-phase-launch', 'jump-phase-air', 'jump-phase-descend', 'jump-phase-land');
+    picoFigure.classList.add('gaze-down', 'head-down');
+    await new Promise(r => setTimeout(r, 160));
 
-    // 2. Accelerated Fall Trajectory
-    const duration = Math.max(360, Math.min(500, 360 + Math.abs(deltaY) * 0.35));
+    // 2. Step-Off / Push-Off (~70ms)
+    picoFigure.classList.remove('gaze-down', 'head-down');
+    picoFigure.classList.add('jumping', 'jump-phase-launch');
+    await new Promise(r => setTimeout(r, 70));
+
+    // 3. Accelerated Fall with Tucked Legs
+    picoFigure.classList.remove('jump-phase-launch');
+    picoFigure.classList.add('jump-phase-air');
+
+    const duration = Math.max(380, Math.min(520, 380 + Math.abs(deltaY) * 0.35));
     const startTime = performance.now();
 
     await new Promise((resolve) => {
@@ -1513,12 +1686,18 @@ const WanderController = {
         const elapsed = currentTime - startTime;
         const u = Math.min(1, elapsed / duration);
 
-        // Forward arc
+        // Forward progression
         const curX = startX + deltaX * u;
         // Gravity accelerated fall (u^1.4)
         const curY = startY + deltaY * Math.pow(u, 1.4);
 
         this.setStagePosition(curX, curY);
+
+        // Pre-landing descent prep (u >= 0.72): legs reach down for landing surface
+        if (u >= 0.72 && picoFigure.classList.contains('jump-phase-air')) {
+          picoFigure.classList.remove('jump-phase-air');
+          picoFigure.classList.add('jump-phase-descend');
+        }
 
         if (u < 1) {
           requestAnimationFrame(step);
@@ -1530,18 +1709,19 @@ const WanderController = {
       requestAnimationFrame(step);
     });
 
-    // 3. Exact Foot-Locking Arrival
+    // 4. Exact Foot-Locking Arrival & Soft Landing Impact Absorption (~110ms)
     this.currentSurfaceId = targetSurface.id;
     this.minX = downMinX;
     this.maxX = downMaxX;
     this.setStagePosition(targetX, targetY);
 
-    // 4. Landing Impact Absorption (~100ms)
-    picoFigure.classList.remove('gaze-down', 'head-down', 'jump-air-fall');
-    picoFigure.classList.add('jump-land');
-    await new Promise(r => setTimeout(r, 100));
+    picoFigure.classList.remove('jump-phase-descend');
+    picoFigure.classList.add('jump-phase-land', 'jump-land');
+    await new Promise(r => setTimeout(r, 110));
 
-    picoFigure.classList.remove('jump-land');
+    // 5. Stabilize and Return to Grounded Idle
+    picoFigure.classList.remove('jumping', 'jump-phase-land', 'jump-land');
+    await this.turnToFront();
     picoFigure.classList.add('idle');
 
     if (!isBubbleOpen) {
@@ -1681,14 +1861,16 @@ class MovementGoal {
     source = 'user',
     targetX = null,
     surfaceId = null,
-    interruptible = true
+    interruptible = true,
+    directlyAbove = false
   }) {
-    this.type = type; // 'SHORT' | 'MEDIUM' | 'LONG' | 'DESTINATION_EDGE' | 'OPPOSITE_EDGE' | 'MAX_EXTENT' | 'CONTINUOUS' | 'CLEAR_VIEW' | 'CANCEL' | 'directional'
+    this.type = type; // 'SHORT' | 'MEDIUM' | 'LONG' | 'DESTINATION_EDGE' | 'OPPOSITE_EDGE' | 'MAX_EXTENT' | 'CONTINUOUS' | 'CLEAR_VIEW' | 'CANCEL' | 'directional' | 'JUMP_UP' | 'JUMP_LEDGE_ABOVE' | 'JUMP_OTHER_LEDGE' | 'DROP_DOWN'
     this.direction = direction; // 'left' | 'right' | null
     this.source = source; // 'user' | 'autonomous' | 'activity'
     this.targetX = targetX;
     this.surfaceId = surfaceId;
     this.interruptible = interruptible;
+    this.directlyAbove = directlyAbove;
     this.createdAt = performance.now();
   }
 }
@@ -1799,13 +1981,31 @@ const UserMovement = {
       return { type: 'CANCEL', direction: null };
     }
 
-    // 1b. Jump Up / Hop Up / Leap Up
-    if (/\b(jump up|hop up|leap up|climb up|vault up)\b/.test(text)) {
+    // 1b. Jump to the other ledge ("Jump to the other ledge", "Hop to the other ledge", etc.)
+    if (/\b(?:other\s+ledge|other\s+shelf|another\s+ledge|another\s+shelf|next\s+ledge|next\s+shelf)\b/.test(text) ||
+        /\b(?:jump|hop|leap|go)\s+(?:to|onto)\s+(?:the\s+)?(?:other|another|next)\s+(?:ledge|shelf)\b/.test(text)) {
+      return { type: 'JUMP_OTHER_LEDGE', direction: null };
+    }
+
+    // 1c. Explicit: Jump to the ledge above me / Go to the ledge above me
+    if (/\b(?:ledge|shelf)\s+(?:directly\s+)?above\s+me\b/.test(text) ||
+        /\b(?:directly\s+)?above\s+me\b/.test(text)) {
+      return { type: 'JUMP_LEDGE_ABOVE', direction: null, directlyAbove: true };
+    }
+
+    // 1d. Jump to the ledge above / Hop onto that ledge / Hop up / Jump up
+    if (/\b(?:jump|hop|leap|go|climb|vault)\s+(?:to|onto)\s+(?:the\s+)?(?:ledge|shelf)\s+above\b/.test(text) ||
+        /\b(?:ledge|shelf)\s+above\b/.test(text) ||
+        /\b(?:jump|hop|leap|go)\s+(?:to|onto|on)\s+(?:that|the)\s+(?:ledge|shelf)\b/.test(text) ||
+        /\b(?:onto|on)\s+(?:that|the)\s+(?:ledge|shelf)\b/.test(text) ||
+        /\b(?:jump up|hop up|leap up|climb up|vault up)\b/.test(text)) {
       return { type: 'JUMP_UP', direction: null };
     }
 
-    // 1c. Drop Down / Come Down / Hop Down / Return to taskbar
-    if (/\b(jump down|hop down|drop down|come down|step down|climb down|return to taskbar|back to taskbar|go down)\b/.test(text)) {
+    // 1e. Drop Down / Come down from the ledge / Return to the taskbar
+    if (/\b(?:come\s+down|step\s+down|climb\s+down|down)\s+from\s+(?:the\s+)?(?:ledge|shelf)\b/.test(text) ||
+        /\b(?:return\s+to|back\s+to|go\s+to|down\s+to)\s+(?:the\s+)?taskbar\b/.test(text) ||
+        /\b(?:jump down|hop down|drop down|come down|step down|climb down|go down|return to taskbar)\b/.test(text)) {
       return { type: 'DROP_DOWN', direction: null };
     }
 
@@ -1876,7 +2076,8 @@ const UserMovement = {
     const goal = new MovementGoal({
       type: intent.type,
       direction: intent.direction,
-      source: 'user'
+      source: 'user',
+      directlyAbove: intent.directlyAbove || false
     });
 
     this.isMovingFromUser = true;

@@ -227,36 +227,65 @@ html, body {
 }
 
 /* ===============================================================
-   PHASE 3 — STEP 2: STYLIZED HOP & DROP KINEMATICS
-   Organic anticipation crouch, airborne stretch, and soft landing
+/* ===============================================================
+   PHASE 3 — STEP 2 & 3A: ARTICULATED JUMP & TRAVERSAL KINEMATICS
+   Dedicated anatomical frames for crouch prep, push-off launch,
+   airborne tucked flight, descent reach, and cushioned impact landing
    =============================================================== */
 
-/* Anticipation crouch / compression before launch */
-.pico-figure.jump-crouch {
-  transform-origin: 19px 60px;
-  transform: scaleY(0.91) translateY(2px);
-  transition: transform 0.12s cubic-bezier(0.2, 0, 0.4, 1);
+/*
+ * Jumping State:
+ * Hide front-facing sprite and show dedicated side jump frames.
+ */
+.pico-figure.jumping #pico-character,
+.pico-figure.jumping .blink-overlay,
+.pico-figure.jumping .eye-overlay,
+.pico-figure.jumping .pico-body,
+.pico-figure.jumping .pico-head {
+  display: none !important;
 }
 
-/* Airborne ascent: vertical stretch */
-.pico-figure.jump-air-rise {
-  transform-origin: 19px 60px;
-  transform: scaleY(1.06) translateY(-2px);
-  transition: transform 0.1s ease-out;
+.pico-figure.jumping .side-frame {
+  display: none;
 }
 
-/* Airborne descent / fall */
-.pico-figure.jump-air-fall {
-  transform-origin: 19px 60px;
-  transform: scaleY(1.02);
-  transition: transform 0.1s ease-in;
+/* Phase 1: Preparation / Crouch Squat (knees bent, feet flat on source surface) */
+.pico-figure.jumping.jump-phase-crouch #pico-side-jump-crouch {
+  display: block;
 }
 
-/* Soft landing impact absorption / compression */
-.pico-figure.jump-land {
-  transform-origin: 19px 60px;
-  transform: scaleY(0.91) translateY(2px);
-  transition: transform 0.08s cubic-bezier(0.1, 0, 0.2, 1);
+/* Phase 2: Push-Off / Extension (toes push off, body surges upward) */
+.pico-figure.jumping.jump-phase-launch #pico-side-jump-launch {
+  display: block;
+}
+
+/* Phase 3: Airborne Flight (legs tucked up in mid-air along parabolic arc) */
+.pico-figure.jumping.jump-phase-air #pico-side-jump-air {
+  display: block;
+}
+
+/* Phase 4: Descent Prep (legs reach downward for landing surface) */
+.pico-figure.jumping.jump-phase-descend #pico-side-jump-descend {
+  display: block;
+}
+
+/* Phase 5: Soft Impact Landing Compression (feet touch down, knees absorb impact) */
+.pico-figure.jumping.jump-phase-land #pico-side-jump-land {
+  display: block;
+}
+
+/* Backward compatibility for legacy tests */
+.pico-figure.jump-crouch #pico-side-jump-crouch {
+  display: block;
+}
+.pico-figure.jump-air-rise #pico-side-jump-air {
+  display: block;
+}
+.pico-figure.jump-air-fall #pico-side-jump-descend {
+  display: block;
+}
+.pico-figure.jump-land #pico-side-jump-land {
+  display: block;
 }
 
 /* Side-facing walk frames derived from authoritative Style A character sheet */
@@ -593,18 +622,20 @@ html, body {
 }
 
 /* ===============================================================
-   LIVE ELEVATED TEST SURFACE (Step 3A Validation)
-   Visual indicator of the elevated walkable surface
+   DEBUG ELEVATED TEST SURFACE (Step 3A Refined)
+   Non-intrusive: strictly hidden during normal desktop usage.
+   Only displayed if body has .debug-surfaces
    =============================================================== */
 .elevated-shelf-visual {
   position: absolute;
   pointer-events: none; /* transparent clicks pass directly through to desktop */
-  display: none; /* revealed when surface is registered */
+  display: none !important; /* Non-intrusive: hidden by default during normal usage */
   z-index: 1;
 }
 
-.elevated-shelf-visual.active {
-  display: block;
+/* Explicit debug visualization flag on body */
+body.debug-surfaces .elevated-shelf-visual.active {
+  display: block !important;
 }
 
 .shelf-glass-bar {
@@ -612,27 +643,12 @@ html, body {
   top: 0;
   left: 0;
   width: 100%;
-  height: 10px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.45) 0%, rgba(200, 220, 245, 0.18) 100%);
-  border-top: 2px solid rgba(255, 255, 255, 0.75);
-  border-bottom: 1px solid rgba(160, 190, 225, 0.25);
+  height: 8px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.35) 0%, rgba(200, 220, 245, 0.12) 100%);
+  border-top: 1.5px solid rgba(255, 255, 255, 0.6);
+  border-bottom: 1px solid rgba(160, 190, 225, 0.2);
   border-radius: 4px;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15), 0 1px 3px rgba(0, 0, 0, 0.05);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-}
-
-.shelf-label {
-  position: absolute;
-  top: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: rgba(226, 232, 240, 0.55);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  white-space: nowrap;
-  user-select: none;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }

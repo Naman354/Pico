@@ -282,32 +282,62 @@ class SurfaceManager {
     }
 
     const PICO_WIDTH = 38;
-    const shelfX = Math.round(workArea.width * 0.45);
-    const shelfWidth = Math.round(workArea.width * 0.42);
+    const shelfWidth = Math.min(360, Math.max(260, Math.round(workArea.width * 0.28)));
+    const gap = 80; // 80px horizontal gap between Ledge A and Ledge B (well within maxJumpReach: 150px)
+    const shelfAX = Math.round(workArea.width * 0.18);
+    const shelfBX = shelfAX + shelfWidth + gap;
 
-    const testShelf = new Surface({
+    // Ledge A: primary elevated test shelf (id: elevated-test-shelf for backwards compatibility)
+    const testShelfA = new Surface({
       id: 'elevated-test-shelf',
       type: 'app_shelf',
-      label: 'Desktop Test Shelf',
+      label: 'Test Ledge A',
       bounds: {
-        x: shelfX,
+        x: shelfAX,
         y: ledgeY - 110,
         width: shelfWidth,
         height: 24
       },
       walkableRange: {
-        minX: shelfX,
-        maxX: shelfX + shelfWidth - PICO_WIDTH
+        minX: shelfAX,
+        maxX: shelfAX + shelfWidth - PICO_WIDTH
       },
       elevation: ledgeY - 110,
       isHome: false,
-      defaultX: Math.round(shelfX + shelfWidth / 2),
+      defaultX: Math.round(shelfAX + shelfWidth / 2),
       leftBoundaryType: 'drop_off',
       rightBoundaryType: 'drop_off'
     });
 
-    this.registerSurface(testShelf);
-    return testShelf;
+    // Ledge B: adjacent reachable shelf at similar elevation for multi-ledge traversal
+    const testShelfB = new Surface({
+      id: 'test-shelf-b',
+      type: 'app_shelf',
+      label: 'Test Ledge B',
+      bounds: {
+        x: shelfBX,
+        y: ledgeY - 120,
+        width: shelfWidth,
+        height: 24
+      },
+      walkableRange: {
+        minX: shelfBX,
+        maxX: shelfBX + shelfWidth - PICO_WIDTH
+      },
+      elevation: ledgeY - 120,
+      isHome: false,
+      defaultX: Math.round(shelfBX + shelfWidth / 2),
+      leftBoundaryType: 'drop_off',
+      rightBoundaryType: 'drop_off'
+    });
+
+    this.registerSurface(testShelfA);
+    this.registerSurface(testShelfB);
+    return testShelfA;
+  }
+
+  initTestSurfaces() {
+    return this.initLiveElevatedShelf();
   }
 }
 
